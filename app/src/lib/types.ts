@@ -1,3 +1,10 @@
+export interface TranscriptSegment {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface Transcript {
   id: string;
   fileName: string;
@@ -6,4 +13,5 @@ export interface Transcript {
   text: string;
   createdAt: string;
   language?: string;
+  segments?: TranscriptSegment[];
 }

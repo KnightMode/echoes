@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useState, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Upload, FileAudio, X, Key } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { FileAudio, Key, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Waveform } from "./waveform";
 import { Transcript } from "@/lib/types";
+import { Waveform } from "./waveform";
 import { toast } from "sonner";
 
 const ACCEPTED_TYPES = [
@@ -22,7 +22,7 @@ const ACCEPTED_TYPES = [
 const MAX_SIZE = 200 * 1024 * 1024;
 
 interface UploadZoneProps {
-  onTranscribed: (transcript: Transcript) => void;
+  onTranscribed: (transcript: Transcript, sourceFile: File) => void;
   onStreamText: (text: string) => void;
   onTranscribeStart: () => void;
   onStatusChange?: (status: { progress: number; message: string }) => void;
@@ -48,49 +48,54 @@ export function UploadZone({
   const [showKeyInput, setShowKeyInput] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+  const handleDrag = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.type === "dragenter" || event.type === "dragover") {
       setDragActive(true);
-    } else if (e.type === "dragleave") {
+    } else if (event.type === "dragleave") {
       setDragActive(false);
     }
   }, []);
 
-  const validateFile = (f: File): string | null => {
-    if (!ACCEPTED_TYPES.includes(f.type) && !f.name.match(/\.(mp3|mp4|wav|webm|ogg|flac|m4a)$/i)) {
+  const validateFile = (candidate: File): string | null => {
+    if (
+      !ACCEPTED_TYPES.includes(candidate.type) &&
+      !candidate.name.match(/\.(mp3|mp4|wav|webm|ogg|flac|m4a)$/i)
+    ) {
       return "Unsupported format. Use MP3, WAV, M4A, FLAC, OGG, or WebM.";
     }
-    if (f.size > MAX_SIZE) {
+
+    if (candidate.size > MAX_SIZE) {
       return "File too large. Maximum size is 200MB.";
     }
+
     return null;
   };
 
-  const handleFile = useCallback((f: File) => {
-    const error = validateFile(f);
+  const handleFile = useCallback((candidate: File) => {
+    const error = validateFile(candidate);
     if (error) {
       toast.error(error);
       return;
     }
-    setFile(f);
+    setFile(candidate);
   }, []);
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
       setDragActive(false);
-      const f = e.dataTransfer.files[0];
-      if (f) handleFile(f);
+      const candidate = event.dataTransfer.files[0];
+      if (candidate) handleFile(candidate);
     },
     [handleFile]
   );
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) handleFile(f);
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const candidate = event.target.files?.[0];
+    if (candidate) handleFile(candidate);
   };
 
   const handleTranscribe = async () => {
@@ -116,22 +121,29 @@ export function UploadZone({
       setStatusMessage("Uploading file...");
       onStatusChange?.({ progress: 10, message: "Uploading file..." });
 
-      const res = await fetch("/api/transcribe", {
+      const response = await fetch("/api/transcribe", {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) {
-        const data = await res.json();
+      if (!response.ok) {
+        const data = await response.json();
         throw new Error(data.error || "Transcription failed");
       }
 
-      const reader = res.body?.getReader();
+      const reader = response.body?.getReader();
       if (!reader) throw new Error("No response stream");
 
       const decoder = new TextDecoder();
       let buffer = "";
-      let resultData: { text: string; language?: string; duration?: number } | null = null;
+      let resultData:
+        | {
+            text: string;
+            language?: string;
+            duration?: number;
+            segments?: Transcript["segments"];
+          }
+        | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -169,25 +181,28 @@ export function UploadZone({
 
       localStorage.setItem("vox-api-key", apiKey);
 
-      const transcript: Transcript = {
-        id: crypto.randomUUID(),
-        fileName: file.name,
-        fileSize: file.size,
-        duration: resultData.duration || 0,
-        text: resultData.text,
-        createdAt: new Date().toISOString(),
-        language: resultData.language,
-      };
+      onTranscribed(
+        {
+          id: crypto.randomUUID(),
+          fileName: file.name,
+          fileSize: file.size,
+          duration: resultData.duration || 0,
+          text: resultData.text,
+          createdAt: new Date().toISOString(),
+          language: resultData.language,
+          segments: resultData.segments,
+        },
+        file
+      );
 
-      onTranscribed(transcript);
       setFile(null);
       toast.success("Transcription complete!");
-    } catch (err) {
+    } catch (error) {
       onStatusChange?.({
         progress: 0,
-        message: err instanceof Error ? err.message : "Something went wrong.",
+        message: error instanceof Error ? error.message : "Something went wrong.",
       });
-      toast.error(err instanceof Error ? err.message : "Something went wrong.");
+      toast.error(error instanceof Error ? error.message : "Something went wrong.");
     } finally {
       setTranscribing(false);
       setProgress(0);
@@ -196,75 +211,72 @@ export function UploadZone({
   };
 
   return (
-    <div className="space-y-4">
-      {/* API Key Section */}
-      <div className="flex items-center gap-3">
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.32em] text-muted-foreground">
+            Upload desk
+          </p>
+          <h2 className="mt-2 font-heading text-2xl leading-none tracking-[-0.03em] sm:text-3xl">
+            Start a new listening pass.
+          </h2>
+        </div>
+
         <button
-          onClick={() => setShowKeyInput(!showKeyInput)}
-          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setShowKeyInput((visible) => !visible)}
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          <Key className="w-3 h-3" />
-          {apiKey ? "API key saved" : "Set OpenAI API key"}
+          <Key className="h-3.5 w-3.5" />
+          <span>{apiKey ? `Key ••••${apiKey.slice(-4)}` : "Set API key"}</span>
         </button>
-        {apiKey && (
-          <span className="text-xs text-primary/60">
-            ••••{apiKey.slice(-4)}
-          </span>
-        )}
       </div>
 
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {showKeyInput && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="grid gap-3 rounded-[24px] border border-white/10 bg-white/[0.04] p-4 sm:grid-cols-[minmax(0,1fr)_auto]"
           >
-            <div className="flex gap-2 pb-3">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
-                className="flex-1 px-3 py-2 text-sm bg-secondary/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/50"
-              />
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  if (apiKey) {
-                    localStorage.setItem("vox-api-key", apiKey);
-                    toast.success("API key saved");
-                  }
-                  setShowKeyInput(false);
-                }}
-              >
-                Save
-              </Button>
-            </div>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="sk-..."
+              className="h-11 rounded-2xl border border-white/10 bg-[#05070d] px-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+            <Button
+              size="lg"
+              variant="secondary"
+              className="h-11 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={() => {
+                if (apiKey) {
+                  localStorage.setItem("vox-api-key", apiKey);
+                  toast.success("API key saved");
+                }
+                setShowKeyInput(false);
+              }}
+            >
+              Save key
+            </Button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Drop Zone */}
       <motion.div
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
         onClick={() => !file && !transcribing && inputRef.current?.click()}
-        className={`relative rounded-2xl border-2 border-dashed transition-all duration-300 ${
+        className={`relative overflow-hidden rounded-[28px] border px-5 py-5 transition-all sm:px-6 sm:py-6 ${
           transcribing
-            ? "border-primary/30 bg-primary/[0.03]"
+            ? "border-primary/20 bg-primary/[0.06]"
             : dragActive
-            ? "border-primary bg-primary/5 glow-amber"
-            : file
-            ? "border-border bg-card cursor-default"
-            : "border-border/50 hover:border-primary/40 hover:bg-card/50 cursor-pointer"
-        } ${!file ? "py-14" : "py-5"} px-6`}
-        whileHover={!file && !transcribing ? { scale: 1.005 } : {}}
-        whileTap={!file && !transcribing ? { scale: 0.995 } : {}}
+              ? "border-primary/35 bg-primary/[0.08]"
+              : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]"
+        } ${!file ? "min-h-[340px] cursor-pointer" : ""}`}
       >
         <input
           ref={inputRef}
@@ -274,96 +286,121 @@ export function UploadZone({
           onChange={handleInputChange}
         />
 
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+
         <AnimatePresence mode="wait">
           {!file ? (
             <motion.div
               key="empty"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="flex flex-col items-center gap-3"
+              exit={{ opacity: 0, y: -16 }}
+              className="flex h-full min-h-[300px] flex-col justify-between"
             >
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-                <Upload className="w-6 h-6 text-primary/70" />
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/6">
+                  <Upload className="h-6 w-6 text-primary" />
+                </div>
+                <div className="max-w-[15rem] text-right text-xs leading-5 text-muted-foreground">
+                  <p>Whisper-ready formats</p>
+                  <p>Automatic chunking for longer files</p>
+                </div>
               </div>
-              <div className="text-center">
-                <p className="text-foreground/90 font-medium mb-1">
-                  Drop your audio file here
+
+              <div>
+                <h3 className="max-w-[11ch] font-heading text-4xl leading-[0.94] tracking-[-0.04em] sm:text-5xl">
+                  Drop your source audio.
+                </h3>
+                <p className="mt-4 max-w-[34ch] text-sm leading-7 text-muted-foreground">
+                  Bring in interviews, lectures, podcasts, or field recordings.
+                  Vox will stream status updates while the transcript is assembled.
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  MP3, WAV, M4A, FLAC, OGG, WebM — up to 200MB
-                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-5 text-xs text-muted-foreground">
+                <span>MP3, WAV, M4A, FLAC, OGG, WebM</span>
+                <span>Up to 200MB</span>
               </div>
             </motion.div>
           ) : (
             <motion.div
-              key="file"
-              initial={{ opacity: 0, y: 10 }}
+              key="selected"
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-4"
+              exit={{ opacity: 0, y: -16 }}
+              className="space-y-6"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <FileAudio className="w-4 h-4 text-primary" />
+              <div className="flex items-start gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/6">
+                  <FileAudio className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(file.size / (1024 * 1024)).toFixed(1)} MB
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-heading text-3xl leading-none tracking-[-0.03em]">
+                    {file.name}
+                  </p>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    {(file.size / (1024 * 1024)).toFixed(1)} MB selected for
+                    transcription
                   </p>
                 </div>
                 {!transcribing && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       setFile(null);
                     }}
-                    className="p-2 rounded-lg hover:bg-secondary/80 transition-colors"
+                    className="rounded-full border border-white/10 bg-white/5 p-2 text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    <X className="w-4 h-4 text-muted-foreground" />
+                    <X className="h-4 w-4" />
                   </button>
                 )}
               </div>
 
-              {transcribing && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="space-y-3"
-                >
-                  <Waveform animate />
-                  <div className="space-y-1.5">
-                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-primary/80 to-primary rounded-full"
-                        initial={{ width: "0%" }}
-                        animate={{ width: `${progress}%` }}
-                        transition={{ duration: 0.5, ease: "easeOut" }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">
-                        {statusMessage || "Preparing..."}
-                      </p>
-                      <p className="text-xs text-primary/70 tabular-nums font-medium">
-                        {Math.round(progress)}%
-                      </p>
+              <div className="rounded-[24px] border border-white/10 bg-[#05070d] p-5">
+                {transcribing ? (
+                  <div className="space-y-4">
+                    <Waveform animate />
+                    <div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
+                        <motion.div
+                          className="h-full rounded-full bg-gradient-to-r from-primary/80 via-primary to-sky-300/80"
+                          initial={{ width: "0%" }}
+                          animate={{ width: `${progress}%` }}
+                          transition={{ duration: 0.35, ease: "easeOut" }}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-4">
+                        <p className="text-sm text-muted-foreground">
+                          {statusMessage || "Preparing..."}
+                        </p>
+                        <p className="text-sm font-medium tabular-nums text-foreground/85">
+                          {Math.round(progress)}%
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </motion.div>
-              )}
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
+                      Ready
+                    </p>
+                    <p className="max-w-[28ch] text-sm leading-7 text-muted-foreground">
+                      The file is staged. Start transcription when you&apos;re ready.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {!transcribing && (
                 <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={(event) => {
+                    event.stopPropagation();
                     handleTranscribe();
                   }}
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 glow-amber font-medium"
                   size="lg"
+                  className="h-14 w-full rounded-[20px] bg-primary text-primary-foreground hover:bg-primary/90"
                 >
-                  Transcribe
+                  Start transcription
                 </Button>
               )}
             </motion.div>

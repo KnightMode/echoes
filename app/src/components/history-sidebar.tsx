@@ -1,15 +1,15 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { FileAudio, Clock, Trash2, Search } from "lucide-react";
-import { Transcript } from "@/lib/types";
-import { formatDuration, formatDate } from "@/lib/store";
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { Clock, FileAudio, Search, Trash2 } from "lucide-react";
+import { Transcript } from "@/lib/types";
+import { formatDate, formatDuration } from "@/lib/store";
 
 interface HistorySidebarProps {
   transcripts: Transcript[];
   selectedId: string | null;
-  onSelect: (t: Transcript) => void;
+  onSelect: (transcript: Transcript) => void;
   onDelete: (id: string) => void;
 }
 
@@ -23,128 +23,106 @@ export function HistorySidebar({
 
   const filtered = search.trim()
     ? transcripts.filter(
-        (t) =>
-          t.fileName.toLowerCase().includes(search.toLowerCase()) ||
-          t.text.toLowerCase().includes(search.toLowerCase())
+        (transcript) =>
+          transcript.fileName.toLowerCase().includes(search.toLowerCase()) ||
+          transcript.text.toLowerCase().includes(search.toLowerCase())
       )
     : transcripts;
 
   return (
     <motion.aside
-      initial={{ width: 0, opacity: 0 }}
-      animate={{ width: 320, opacity: 1 }}
-      exit={{ width: 0, opacity: 0 }}
-      transition={{ duration: 0.3, ease: "easeInOut" }}
-      className="border-l border-border/40 bg-card/30 backdrop-blur-sm overflow-hidden flex-shrink-0 flex flex-col h-[calc(100vh-65px)]"
+      initial={{ x: 32, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 32, opacity: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="relative hidden w-[320px] shrink-0 overflow-hidden rounded-[30px] border border-white/10 bg-[#080a11]/88 shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-2xl 2xl:block"
     >
-      <div className="w-[320px] flex flex-col h-full">
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-border/30 space-y-3">
-          <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
-            Transcript History
+      <div className="flex h-full flex-col">
+        <div className="border-b border-white/10 px-5 py-5">
+          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+            Archive
+          </p>
+          <h3 className="mt-2 font-heading text-3xl leading-none tracking-[-0.03em]">
+            Past takes
           </h3>
 
-          {transcripts.length > 3 && (
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search transcripts..."
-                className="w-full pl-7 pr-3 py-1.5 text-xs bg-secondary/30 border border-border/40 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/40"
-              />
-            </div>
-          )}
+          <div className="relative mt-4">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by file or phrase"
+              className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+          </div>
         </div>
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto px-3 py-3">
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <FileAudio className="w-8 h-8 text-muted-foreground/20 mb-3" />
-              <p className="text-xs text-muted-foreground/50">
-                {search ? "No matching transcripts" : "No transcripts yet"}
+            <div className="flex h-full flex-col items-center justify-center px-5 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                <FileAudio className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <p className="mt-4 text-sm text-foreground/75">
+                {search ? "No matching transcripts." : "No transcripts yet."}
               </p>
-              {!search && (
-                <p className="text-[10px] text-muted-foreground/30 mt-1">
-                  Upload an audio file to get started
-                </p>
-              )}
+              <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                Upload a recording to start building the archive.
+              </p>
             </div>
           ) : (
-            filtered.map((t, i) => (
-              <motion.button
-                key={t.id}
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.03 }}
-                onClick={() => onSelect(t)}
-                className={`w-full text-left p-3 rounded-xl transition-all duration-200 group relative ${
-                  selectedId === t.id
-                    ? "bg-primary/10 border border-primary/20"
-                    : "hover:bg-secondary/40 border border-transparent"
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                      selectedId === t.id
-                        ? "bg-primary/20"
-                        : "bg-secondary/60 group-hover:bg-secondary"
-                    }`}
-                  >
-                    <FileAudio
-                      className={`w-3 h-3 ${
-                        selectedId === t.id
-                          ? "text-primary"
-                          : "text-muted-foreground/60"
-                      }`}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`text-xs font-medium truncate ${
-                        selectedId === t.id ? "text-primary" : ""
-                      }`}
-                    >
-                      {t.fileName}
+            <div className="space-y-2">
+              {filtered.map((transcript, index) => (
+                <motion.button
+                  key={transcript.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.02 }}
+                  onClick={() => onSelect(transcript)}
+                  className={`group relative w-full rounded-[22px] border px-4 py-4 text-left transition-colors ${
+                    selectedId === transcript.id
+                      ? "border-primary/30 bg-primary/[0.09]"
+                      : "border-transparent bg-white/[0.03] hover:border-white/10 hover:bg-white/[0.05]"
+                  }`}
+                >
+                  <div className="pr-7">
+                    <p className="truncate text-sm font-medium text-foreground/88">
+                      {transcript.fileName}
                     </p>
-                    <p className="text-[11px] text-muted-foreground/50 line-clamp-1 mt-0.5 leading-relaxed">
-                      {t.text.slice(0, 80)}...
+                    <p className="mt-2 line-clamp-2 text-xs leading-6 text-muted-foreground">
+                      {transcript.text}
                     </p>
-                    <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground/40">
-                      {t.duration > 0 && (
-                        <span className="flex items-center gap-0.5">
-                          <Clock className="w-2.5 h-2.5" />
-                          {formatDuration(t.duration)}
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                      {transcript.duration > 0 && (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDuration(transcript.duration)}
                         </span>
                       )}
-                      <span>{formatDate(t.createdAt)}</span>
+                      <span>{formatDate(transcript.createdAt)}</span>
                     </div>
                   </div>
-                </div>
 
-                {/* Delete button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(t.id);
-                  }}
-                  className="absolute top-2 right-2 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/20 transition-all"
-                  title="Delete"
-                >
-                  <Trash2 className="w-3 h-3 text-muted-foreground/40 hover:text-destructive" />
-                </button>
-              </motion.button>
-            ))
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(transcript.id);
+                    }}
+                    className="absolute right-3 top-3 rounded-full p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/20 hover:text-destructive group-hover:opacity-100"
+                    title="Delete transcript"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </motion.button>
+              ))}
+            </div>
           )}
         </div>
 
-        {/* Footer stats */}
         {transcripts.length > 0 && (
-          <div className="p-3 border-t border-border/30 text-[10px] text-muted-foreground/40 text-center">
-            {transcripts.length} transcript{transcripts.length !== 1 && "s"} · Stored locally
+          <div className="border-t border-white/10 px-5 py-4 text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+            {transcripts.length} saved in local archive
           </div>
         )}
       </div>

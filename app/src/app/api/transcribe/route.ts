@@ -7,12 +7,25 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { existsSync } from "fs";
+import type { TranscriptionSegment } from "openai/resources/audio/transcriptions";
 
 const execFileAsync = promisify(execFile);
 const WHISPER_MAX_SIZE = 24 * 1024 * 1024;
 const CHUNK_DURATION_SECONDS = 600;
 
 export const maxDuration = 300;
+
+function mapSegments(
+  segments: Array<TranscriptionSegment> | undefined,
+  offsetSeconds = 0
+) {
+  return (segments ?? []).map((segment) => ({
+    id: segment.id,
+    start: segment.start + offsetSeconds,
+    end: segment.end + offsetSeconds,
+    text: segment.text.trim(),
+  }));
+}
 
 export async function POST(request: NextRequest) {
   const workDir = join(tmpdir(), `vox-${randomUUID()}`);
@@ -58,6 +71,7 @@ export async function POST(request: NextRequest) {
               text: transcription.text,
               language: transcription.language,
               duration: transcription.duration,
+              segments: mapSegments(transcription.segments),
             });
           } catch (err) {
             const message = err instanceof Error ? err.message : "Transcription failed";
@@ -135,6 +149,7 @@ export async function POST(request: NextRequest) {
           let fullText = "";
           let combinedDuration = 0;
           let language: string | undefined;
+          const fullSegments: ReturnType<typeof mapSegments> = [];
 
           for (let i = 0; i < totalChunks; i++) {
             const chunkProgress = Math.round(10 + ((i / totalChunks) * 85));
@@ -155,7 +170,9 @@ export async function POST(request: NextRequest) {
               response_format: "verbose_json",
             });
 
+            const offset = combinedDuration;
             fullText += (fullText ? " " : "") + transcription.text;
+            fullSegments.push(...mapSegments(transcription.segments, offset));
             combinedDuration += transcription.duration ?? 0;
             if (!language && transcription.language) {
               language = transcription.language;
@@ -181,6 +198,7 @@ export async function POST(request: NextRequest) {
             text: fullText,
             language,
             duration: combinedDuration,
+            segments: fullSegments,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Transcription failed";
