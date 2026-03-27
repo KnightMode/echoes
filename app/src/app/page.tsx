@@ -133,7 +133,7 @@ export default function Home() {
 
   const handleConnectLibrary = useCallback(async () => {
     if (!isFileSystemAccessSupported()) {
-      toast.error("This browser cannot pick a folder. Try Chrome or Edge.");
+      toast.error("Folder access isn't supported in this browser. Use Chrome or Edge.");
       return;
     }
     const root = await pickLibraryDirectory();
@@ -155,10 +155,6 @@ export default function Home() {
   const transcription = useTranscriptionQueue({
     onComplete: useCallback(
       async (result, sourceFile) => {
-        if (!libraryRoot) {
-          toast.error("Choose a library folder on your computer first.");
-          return;
-        }
         const transcript: Transcript = {
           id: crypto.randomUUID(),
           fileName: sourceFile.name,
@@ -169,6 +165,11 @@ export default function Home() {
           language: result.language,
           segments: result.segments,
         };
+        if (!libraryRoot) {
+          // Browser doesn't support folder access — show result in-memory only
+          dispatch({ type: "SELECT", transcript });
+          return;
+        }
         await addTranscript(libraryRoot, transcript, sourceFile);
         dispatch({ type: "SELECT", transcript });
       },
@@ -205,7 +206,11 @@ export default function Home() {
     async (file: File, apiKey: string) => {
       if (!libraryRoot) {
         if (!isFileSystemAccessSupported()) {
-          toast.error("Folder access requires Chrome or Edge.");
+          // Safari and Firefox don't support showDirectoryPicker — transcribe in-memory only
+          if (!transcription.busy) {
+            dispatch({ type: "GO_LIVE" });
+          }
+          transcription.enqueue(file, apiKey);
           return;
         }
         const root = await pickLibraryDirectory();
