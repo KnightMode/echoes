@@ -403,23 +403,23 @@ export default function Home() {
             transition={{ duration: 0.2 }}
             className="sticky top-14 z-20 overflow-hidden border-b border-primary/20 bg-background"
           >
-            <div className="mx-auto flex max-w-5xl items-center gap-3 px-5 py-2.5">
-              <div className="shrink-0">
+            <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-2.5 sm:gap-3 sm:px-5">
+              <div className="hidden shrink-0 sm:block">
                 <Waveform animate />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-medium text-foreground">Transcribing</span>
-                  <span className="truncate text-[13px] text-muted-foreground">
+                  <span className="hidden truncate text-[13px] text-muted-foreground sm:inline">
                     {transcription.activeJob?.fileName}
                   </span>
                   {transcription.queueCount > 0 && (
                     <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                      +{transcription.queueCount} queued
+                      +{transcription.queueCount}
                     </span>
                   )}
                 </div>
-                <div className="mt-1.5 h-1 w-full max-w-xs overflow-hidden rounded-full bg-primary/10">
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-primary/10 sm:max-w-xs">
                   <m.div
                     className="h-full rounded-full bg-primary"
                     animate={{ width: `${transcription.activeJob?.progress ?? 0}%` }}
@@ -432,18 +432,19 @@ export default function Home() {
               </span>
               <button
                 onClick={goLive}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary transition-colors hover:bg-primary/20"
+                title="View transcription"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 text-[12px] font-medium text-primary transition-colors hover:bg-primary/20 sm:px-3"
               >
-                <Eye className="h-3 w-3" />
-                View
+                <Eye className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                <span className="hidden sm:inline">View</span>
               </button>
               <button
                 onClick={handleCancel}
                 title="Stop transcription"
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:px-3"
               >
-                <StopCircle className="h-3 w-3" />
-                Stop
+                <StopCircle className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                <span className="hidden sm:inline">Stop</span>
               </button>
             </div>
           </m.div>
