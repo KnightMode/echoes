@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useReducer, useSyncExternalStore } from "react";
+import { AnimatePresence, m } from "framer-motion";
 import {
   ArrowRight,
   AudioLines,
@@ -24,23 +24,75 @@ import {
   getTranscripts,
   saveTranscript,
 } from "@/lib/store";
-import { useTranscription } from "@/lib/use-transcription";
+import { useTranscriptionQueue } from "@/lib/use-transcription";
 import { toast } from "sonner";
 
 type View = "home" | "live" | "viewer";
 
-export default function Home() {
-  const [transcripts, setTranscripts] = useState<Transcript[]>(() => {
-    if (typeof window === "undefined") return [];
-    return getTranscripts();
-  });
-  const [selected, setSelected] = useState<Transcript | null>(null);
-  const [view, setView] = useState<View>("home");
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+interface AppState {
+  selected: Transcript | null;
+  view: View;
+  drawerOpen: boolean;
+  audioUrl: string | null;
+}
 
-  // ── Transcription hook (persists across view changes) ──
-  const transcription = useTranscription({
+type AppAction =
+  | { type: "SELECT"; transcript: Transcript }
+  | { type: "GO_HOME" }
+  | { type: "GO_LIVE" }
+  | { type: "OPEN_DRAWER" }
+  | { type: "CLOSE_DRAWER" }
+  | { type: "SET_AUDIO_URL"; url: string | null }
+  | { type: "DELETE_SELECTED"; id: string };
+
+function appReducer(state: AppState, action: AppAction): AppState {
+  switch (action.type) {
+    case "SELECT":
+      return { ...state, selected: action.transcript, view: "viewer" };
+    case "GO_HOME":
+      return { ...state, selected: null, view: "home" };
+    case "GO_LIVE":
+      return { ...state, selected: null, view: "live" };
+    case "OPEN_DRAWER":
+      return { ...state, drawerOpen: true };
+    case "CLOSE_DRAWER":
+      return { ...state, drawerOpen: false };
+    case "SET_AUDIO_URL":
+      return { ...state, audioUrl: action.url };
+    case "DELETE_SELECTED":
+      if (state.selected?.id === action.id) return { ...state, selected: null, view: "home" };
+      return state;
+  }
+}
+
+const TRANSCRIPTS_KEY = "echoes-transcripts";
+
+function subscribeToTranscripts(cb: () => void) {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+
+function getTranscriptsSnapshot() {
+  return localStorage.getItem(TRANSCRIPTS_KEY) || "[]";
+}
+
+function getTranscriptsServerSnapshot() {
+  return "[]";
+}
+
+export default function Home() {
+  const rawTranscripts = useSyncExternalStore(subscribeToTranscripts, getTranscriptsSnapshot, getTranscriptsServerSnapshot);
+  const transcripts: Transcript[] = JSON.parse(rawTranscripts);
+
+  const [state, dispatch] = useReducer(appReducer, {
+    selected: null,
+    view: "home" as View,
+    drawerOpen: false,
+    audioUrl: null,
+  });
+
+  // ── Transcription queue (persists across view changes) ──
+  const transcription = useTranscriptionQueue({
     onComplete: useCallback(async (result, sourceFile) => {
       const transcript: Transcript = {
         id: crypto.randomUUID(),
@@ -54,9 +106,7 @@ export default function Home() {
       };
       await saveAudioFile(transcript.id, sourceFile);
       saveTranscript(transcript);
-      setTranscripts((prev) => [transcript, ...prev]);
-      setSelected(transcript);
-      setView("viewer");
+      dispatch({ type: "SELECT", transcript });
     }, []),
   });
 
@@ -64,24 +114,28 @@ export default function Home() {
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
+    if (!state.selected) {
+      dispatch({ type: "SET_AUDIO_URL", url: null });
+      return;
+    }
     const load = async () => {
-      if (!selected) { setAudioUrl(null); return; }
-      const file = await getAudioFile(selected.id);
+      const file = await getAudioFile(state.selected!.id);
       if (!active) return;
-      if (!file) { setAudioUrl(null); return; }
+      if (!file) { dispatch({ type: "SET_AUDIO_URL", url: null }); return; }
       objectUrl = URL.createObjectURL(file);
-      setAudioUrl(objectUrl);
+      dispatch({ type: "SET_AUDIO_URL", url: objectUrl });
     };
     void load();
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [selected]);
+  }, [state.selected]);
 
   // ── Handlers ──
   const handleStartTranscription = useCallback(
     (file: File, apiKey: string) => {
-      setView("live");
-      setSelected(null);
-      transcription.start(file, apiKey);
+      if (!transcription.busy) {
+        dispatch({ type: "GO_LIVE" });
+      }
+      transcription.enqueue(file, apiKey);
     },
     [transcription]
   );
@@ -90,30 +144,17 @@ export default function Home() {
     (id: string) => {
       void deleteAudioFile(id);
       deleteTranscript(id);
-      setTranscripts((prev) => prev.filter((t) => t.id !== id));
-      if (selected?.id === id) { setSelected(null); setView("home"); }
+      dispatch({ type: "DELETE_SELECTED", id });
       toast.success("Transcript deleted");
     },
-    [selected]
+    []
   );
 
-  const goHome = useCallback(() => {
-    setSelected(null);
-    setView("home");
-  }, []);
+  const goHome = useCallback(() => dispatch({ type: "GO_HOME" }), []);
+  const goLive = useCallback(() => dispatch({ type: "GO_LIVE" }), []);
+  const openTranscript = useCallback((t: Transcript) => dispatch({ type: "SELECT", transcript: t }), []);
 
-  const goLive = useCallback(() => {
-    setView("live");
-    setSelected(null);
-  }, []);
-
-  const openTranscript = useCallback((t: Transcript) => {
-    setSelected(t);
-    setView("viewer");
-  }, []);
-
-  // Is transcription running in background (user is not on live view)?
-  const bgTranscribing = transcription.active && view !== "live";
+  const bgTranscribing = transcription.busy && state.view !== "live";
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
@@ -123,18 +164,18 @@ export default function Home() {
           <button onClick={goHome} className="flex items-center gap-2.5">
             <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
               <AudioLines className="h-4 w-4 text-primary" />
-              {transcription.active && (
+              {transcription.busy && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
                 </span>
               )}
             </div>
-            <span className="text-[15px] font-bold tracking-tight">Vox</span>
+            <span className="text-[15px] font-bold tracking-tight">Echoes</span>
           </button>
 
           <div className="flex items-center gap-2">
-            {view !== "home" && (
+            {state.view !== "home" && (
               <button
                 onClick={goHome}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -145,7 +186,7 @@ export default function Home() {
             )}
             {transcripts.length > 0 && (
               <button
-                onClick={() => setDrawerOpen(true)}
+                onClick={() => dispatch({ type: "OPEN_DRAWER" })}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
                 <FolderOpen className="h-3.5 w-3.5" />
@@ -162,45 +203,42 @@ export default function Home() {
       {/* ── Background transcription indicator ── */}
       <AnimatePresence>
         {bgTranscribing && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="sticky top-14 z-20 overflow-hidden border-b border-primary/20 bg-primary/[0.04]"
+            className="sticky top-14 z-20 overflow-hidden border-b border-primary/20 bg-background"
           >
             <div className="mx-auto flex max-w-5xl items-center gap-3 px-5 py-2.5">
-              {/* Animated waveform mini */}
               <div className="shrink-0">
                 <Waveform animate />
               </div>
-
-              {/* Info */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-medium text-foreground">
                     Transcribing
                   </span>
                   <span className="truncate text-[13px] text-muted-foreground">
-                    {transcription.fileName}
+                    {transcription.activeJob?.fileName}
                   </span>
+                  {transcription.queueCount > 0 && (
+                    <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                      +{transcription.queueCount} queued
+                    </span>
+                  )}
                 </div>
-                {/* Mini progress bar */}
                 <div className="mt-1.5 h-1 w-full max-w-xs overflow-hidden rounded-full bg-primary/10">
-                  <motion.div
+                  <m.div
                     className="h-full rounded-full bg-primary"
-                    animate={{ width: `${transcription.progress}%` }}
+                    animate={{ width: `${transcription.activeJob?.progress ?? 0}%` }}
                     transition={{ duration: 0.3, ease: "easeOut" }}
                   />
                 </div>
               </div>
-
-              {/* Progress % */}
               <span className="shrink-0 font-mono text-[12px] font-medium tabular-nums text-primary">
-                {Math.round(transcription.progress)}%
+                {Math.round(transcription.activeJob?.progress ?? 0)}%
               </span>
-
-              {/* View button */}
               <button
                 onClick={goLive}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-[12px] font-medium text-primary transition-colors hover:bg-primary/20"
@@ -209,7 +247,7 @@ export default function Home() {
                 View
               </button>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -217,25 +255,26 @@ export default function Home() {
       <main className="mx-auto max-w-5xl px-5 py-8">
         <AnimatePresence mode="wait">
           {/* ─ Transcript viewer ─ */}
-          {view === "viewer" && selected && (
-            <motion.div
-              key={`viewer-${selected.id}`}
+          {state.view === "viewer" && state.selected && (
+            <m.div
+              key={`viewer-${state.selected.id}`}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3 }}
             >
               <TranscriptViewer
-                transcript={selected}
-                audioUrl={audioUrl}
+                transcript={state.selected}
+                audioUrl={state.audioUrl}
                 onBack={goHome}
+                stickyOffset={bgTranscribing}
               />
-            </motion.div>
+            </m.div>
           )}
 
           {/* ─ Live transcription ─ */}
-          {view === "live" && (
-            <motion.div
+          {state.view === "live" && (
+            <m.div
               key="live"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -244,59 +283,59 @@ export default function Home() {
               className="mx-auto max-w-2xl"
             >
               <LiveTranscript
-                text={transcription.text}
-                progress={transcription.progress}
-                status={transcription.status}
-                fileName={transcription.fileName}
-                active={transcription.active}
+                text={transcription.activeJob?.text ?? ""}
+                progress={transcription.activeJob?.progress ?? 0}
+                status={transcription.activeJob?.status ?? ""}
+                fileName={transcription.activeJob?.fileName ?? ""}
+                active={transcription.activeJob !== null}
+                queueCount={transcription.queueCount}
               />
-            </motion.div>
+            </m.div>
           )}
 
           {/* ─ Home / Upload ─ */}
-          {view === "home" && (
-            <motion.div
+          {state.view === "home" && (
+            <m.div
               key="home"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3 }}
             >
-              {/* Hero */}
-              <div className="mx-auto max-w-2xl pb-10 pt-8 text-center sm:pt-16">
-                <motion.div
+              {/* Hero — compact so upload box is visible without scrolling */}
+              <div className="mx-auto max-w-2xl pb-6 pt-4 text-center sm:pt-8">
+                <m.div
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                  className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-primary/20 to-primary/5 ring-1 ring-primary/10"
+                  className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-b from-primary/20 to-primary/5 ring-1 ring-primary/10"
                 >
-                  <AudioLines className="h-7 w-7 text-primary" />
-                </motion.div>
+                  <AudioLines className="h-6 w-6 text-primary" />
+                </m.div>
 
-                <motion.h1
+                <m.h1
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.05, duration: 0.4 }}
-                  className="text-[2rem] font-bold leading-tight tracking-tight sm:text-[2.75rem]"
+                  className="text-[1.75rem] font-bold leading-tight tracking-tight sm:text-[2.25rem]"
                 >
-                  Audio to text,
-                  <br />
+                  Audio to text,{" "}
                   <span className="text-muted-foreground">in seconds.</span>
-                </motion.h1>
+                </m.h1>
 
-                <motion.p
+                <m.p
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1, duration: 0.4 }}
-                  className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground"
+                  className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-muted-foreground"
                 >
                   Drop an audio file, watch it transcribe in real time, and get clean
                   text you can copy, download, or read alongside the original recording.
-                </motion.p>
+                </m.p>
               </div>
 
               {/* Upload zone */}
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15, duration: 0.4 }}
@@ -304,13 +343,13 @@ export default function Home() {
               >
                 <UploadZone
                   onStartTranscription={handleStartTranscription}
-                  disabled={transcription.active}
+                  busy={transcription.busy}
                 />
-              </motion.div>
+              </m.div>
 
               {/* Recent transcripts */}
               {transcripts.length > 0 && (
-                <motion.div
+                <m.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.25, duration: 0.4 }}
@@ -320,7 +359,7 @@ export default function Home() {
                     <h2 className="text-sm font-semibold text-muted-foreground">Recent</h2>
                     {transcripts.length > 4 && (
                       <button
-                        onClick={() => setDrawerOpen(true)}
+                        onClick={() => dispatch({ type: "OPEN_DRAWER" })}
                         className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
                       >
                         View all
@@ -359,23 +398,23 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
-                </motion.div>
+                </m.div>
               )}
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </main>
 
       {/* ── Library drawer ── */}
       <AnimatePresence>
-        {drawerOpen && (
+        {state.drawerOpen && (
           <>
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-              onClick={() => setDrawerOpen(false)}
+              onClick={() => dispatch({ type: "CLOSE_DRAWER" })}
             />
-            <motion.div
+            <m.div
               initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
               className="fixed inset-y-0 right-0 z-50 w-full max-w-md"
@@ -384,7 +423,7 @@ export default function Home() {
                 <div className="flex items-center justify-between border-b border-border px-5 py-4">
                   <h2 className="text-sm font-semibold">Library</h2>
                   <button
-                    onClick={() => setDrawerOpen(false)}
+                    onClick={() => dispatch({ type: "CLOSE_DRAWER" })}
                     className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
                     <X className="h-4 w-4" />
@@ -392,12 +431,12 @@ export default function Home() {
                 </div>
                 <HistorySidebar
                   transcripts={transcripts}
-                  selectedId={selected?.id ?? null}
-                  onSelect={(t) => { openTranscript(t); setDrawerOpen(false); }}
+                  selectedId={state.selected?.id ?? null}
+                  onSelect={(t) => { openTranscript(t); dispatch({ type: "CLOSE_DRAWER" }); }}
                   onDelete={handleDelete}
                 />
               </div>
-            </motion.div>
+            </m.div>
           </>
         )}
       </AnimatePresence>

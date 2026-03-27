@@ -2,11 +2,19 @@
 
 import { Transcript } from "./types";
 
-const STORAGE_KEY = "vox-transcripts";
+const STORAGE_KEY = "echoes-transcripts";
+const LEGACY_KEY = "vox-transcripts";
 
 export function getTranscripts(): Transcript[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(STORAGE_KEY);
+  let raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    raw = localStorage.getItem(LEGACY_KEY);
+    if (raw) {
+      localStorage.setItem(STORAGE_KEY, raw);
+      localStorage.removeItem(LEGACY_KEY);
+    }
+  }
   if (!raw) return [];
   try {
     return JSON.parse(raw);

@@ -1,29 +1,43 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { FileAudio, Key, Loader2, Upload, X } from "lucide-react";
+import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { AnimatePresence, m } from "framer-motion";
+import { FileAudio, Key, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const ACCEPTED_TYPES = [
   "audio/mpeg", "audio/mp4", "audio/wav", "audio/webm",
   "audio/ogg", "audio/flac", "video/mp4", "video/webm",
+  "video/x-ms-wmv",
 ];
-const MAX_SIZE = 200 * 1024 * 1024;
+const MAX_SIZE = 250 * 1024 * 1024;
+const API_KEY_KEY = "echoes-api-key";
+
+function subscribeToStorage(cb: () => void) {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+
+function getApiKeySnapshot() {
+  return localStorage.getItem(API_KEY_KEY) || "";
+}
+
+function getApiKeyServerSnapshot() {
+  return "";
+}
 
 interface UploadZoneProps {
   onStartTranscription: (file: File, apiKey: string) => void;
-  disabled?: boolean;
+  busy?: boolean;
 }
 
-export function UploadZone({ onStartTranscription, disabled }: UploadZoneProps) {
+export function UploadZone({ onStartTranscription, busy }: UploadZoneProps) {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [apiKey, setApiKey] = useState(() => {
-    if (typeof window !== "undefined") return localStorage.getItem("vox-api-key") || "";
-    return "";
-  });
+  const storedKey = useSyncExternalStore(subscribeToStorage, getApiKeySnapshot, getApiKeyServerSnapshot);
+  const [localKey, setLocalKey] = useState<string | null>(null);
+  const apiKey = localKey ?? storedKey;
   const [showKeyInput, setShowKeyInput] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,9 +48,9 @@ export function UploadZone({ onStartTranscription, disabled }: UploadZoneProps) 
   }, []);
 
   const validateFile = (f: File): string | null => {
-    if (!ACCEPTED_TYPES.includes(f.type) && !f.name.match(/\.(mp3|mp4|wav|webm|ogg|flac|m4a)$/i))
-      return "Unsupported format. Use MP3, WAV, M4A, FLAC, OGG, or WebM.";
-    if (f.size > MAX_SIZE) return "File too large. Maximum size is 200MB.";
+    if (!ACCEPTED_TYPES.includes(f.type) && !f.name.match(/\.(mp3|mp4|wav|webm|ogg|flac|m4a|wmv)$/i))
+      return "Unsupported format. Use MP3, WAV, M4A, FLAC, OGG, WebM, or WMV.";
+    if (f.size > MAX_SIZE) return "File too large. Maximum size is 250MB.";
     return null;
   };
 
@@ -63,6 +77,13 @@ export function UploadZone({ onStartTranscription, disabled }: UploadZoneProps) 
     setFile(null);
   };
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (!file) inputRef.current?.click();
+    }
+  }, [file]);
+
   return (
     <div className="space-y-4">
       {/* API key bar */}
@@ -78,77 +99,69 @@ export function UploadZone({ onStartTranscription, disabled }: UploadZoneProps) 
 
       <AnimatePresence initial={false}>
         {showKeyInput && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }} className="overflow-hidden"
           >
             <div className="flex gap-2 rounded-xl border border-border bg-card p-3">
               <input
                 type="password" value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..."
+                onChange={(e) => setLocalKey(e.target.value)} placeholder="sk-..."
                 className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
               <Button
                 size="sm" className="h-9 rounded-lg bg-primary px-4 text-primary-foreground hover:bg-primary/90"
                 onClick={() => {
-                  if (apiKey) { localStorage.setItem("vox-api-key", apiKey); toast.success("Saved"); }
+                  if (apiKey) { localStorage.setItem(API_KEY_KEY, apiKey); toast.success("Saved"); }
                   setShowKeyInput(false);
                 }}
               >
                 Save
               </Button>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
       {/* Drop zone */}
       <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
         onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
-        onClick={() => !file && !disabled && inputRef.current?.click()}
+        onClick={() => !file && inputRef.current?.click()}
         className={`relative rounded-2xl border-2 border-dashed transition-all duration-200 ${
-          disabled ? "pointer-events-none border-border/50 bg-card/50 opacity-60"
-            : dragActive ? "border-primary/50 bg-primary/[0.05]"
+          dragActive ? "border-primary/50 bg-primary/[0.05]"
             : file ? "border-border bg-card"
             : "cursor-pointer border-border/80 bg-card hover:border-muted-foreground/30"
         }`}
       >
         <input
-          ref={inputRef} type="file" accept=".mp3,.mp4,.wav,.webm,.ogg,.flac,.m4a"
+          ref={inputRef} type="file" accept=".mp3,.mp4,.wav,.webm,.ogg,.flac,.m4a,.wmv"
           className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
         />
 
         <AnimatePresence mode="wait">
           {!file ? (
-            <motion.div
+            <m.div
               key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex flex-col items-center px-6 py-14 text-center sm:py-20"
             >
               <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-secondary">
-                {disabled ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                ) : (
-                  <Upload className="h-5 w-5 text-muted-foreground" />
-                )}
+                <Upload className="h-5 w-5 text-muted-foreground" />
               </div>
-              {disabled ? (
-                <>
-                  <p className="text-sm font-medium">Transcription in progress</p>
-                  <p className="mt-1.5 text-[13px] text-muted-foreground">
-                    Wait for the current transcription to finish, or view its progress above.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-medium">Drop an audio file here, or click to browse</p>
-                  <p className="mt-1.5 text-[13px] text-muted-foreground">
-                    MP3, WAV, M4A, FLAC, OGG, WebM &middot; up to 200 MB
-                  </p>
-                </>
+              <p className="text-sm font-medium">Drop an audio file here, or click to browse</p>
+              <p className="mt-1.5 text-[13px] text-muted-foreground">
+                MP3, WAV, M4A, FLAC, OGG, WebM, WMV &middot; up to 250 MB
+              </p>
+              {busy && (
+                <p className="mt-2 text-[12px] text-primary">
+                  A transcription is in progress — new files will be queued automatically.
+                </p>
               )}
-            </motion.div>
+            </m.div>
           ) : (
-            <motion.div
+            <m.div
               key="file" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="p-5"
             >
@@ -174,9 +187,9 @@ export function UploadZone({ onStartTranscription, disabled }: UploadZoneProps) 
                 onClick={(e) => { e.stopPropagation(); handleTranscribe(); }}
                 className="mt-5 h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"
               >
-                Transcribe
+                {busy ? "Add to Queue" : "Transcribe"}
               </Button>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </div>

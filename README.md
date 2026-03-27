@@ -1,12 +1,12 @@
-# Vox
+# Echoes
 
-Vox is a polished Next.js audio transcription app powered by OpenAI Whisper. Upload any recording, watch it transcribe in real time, and read the result in a clean, immersive interface with synced audio playback.
+Echoes is a polished Next.js audio transcription app powered by OpenAI Whisper. Upload any recording, watch it transcribe in real time, and read the result in a clean, immersive interface with synced audio playback.
 
 ## Features
 
 ### Transcription
 
-- **Drag-and-drop upload** — drop an audio file or click to browse. Supports MP3, WAV, M4A, FLAC, OGG, and WebM up to 200 MB.
+- **Drag-and-drop upload** — drop an audio file or click to browse. Supports MP3, WAV, M4A, FLAC, OGG, WebM, and WMV up to 250 MB.
 - **Real-time streaming** — progress updates and partial transcript text stream to the UI as Whisper processes each segment.
 - **Automatic chunking** — files over 24 MB are split into 10-minute MP3 segments with `ffmpeg`, transcribed in parallel, and reassembled into one transcript with correct timestamps.
 - **Background transcription** — start a transcription, then freely navigate to other screens. The process continues in the background with a persistent indicator bar showing filename, progress, and a button to jump back to the live view.

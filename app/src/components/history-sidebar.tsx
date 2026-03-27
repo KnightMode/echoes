@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { AudioLines, Clock, Search, Trash2 } from "lucide-react";
 import { Transcript } from "@/lib/types";
 import { formatDate, formatDuration } from "@/lib/store";
@@ -47,7 +47,7 @@ export function HistorySidebar({ transcripts, selectedId, onSelect, onDelete }: 
         ) : (
           <div className="space-y-1">
             {filtered.map((t, i) => (
-              <motion.button
+              <m.button
                 key={t.id}
                 initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.015 }}
@@ -77,7 +77,7 @@ export function HistorySidebar({ transcripts, selectedId, onSelect, onDelete }: 
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
-              </motion.button>
+              </m.button>
             ))}
           </div>
         )}

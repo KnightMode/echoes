@@ -28,7 +28,7 @@ function mapSegments(
 }
 
 export async function POST(request: NextRequest) {
-  const workDir = join(tmpdir(), `vox-${randomUUID()}`);
+  const workDir = join(tmpdir(), `echoes-${randomUUID()}`);
 
   try {
     const formData = await request.formData();

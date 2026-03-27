@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Manrope, Crimson_Pro, IBM_Plex_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ScrollToTop } from "@/components/scroll-to-top";
+import { MotionProvider } from "@/components/motion-provider";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -22,7 +23,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vox",
+  title: "Echoes",
   description: "Audio transcription, beautifully simple.",
 };
 
@@ -37,6 +38,7 @@ export default function RootLayout({
       className={`${manrope.variable} ${crimsonPro.variable} ${ibmPlexMono.variable} h-full`}
     >
       <body className="min-h-full flex flex-col">
+        <MotionProvider>
         {children}
         <ScrollToTop />
         <Toaster
@@ -52,6 +54,7 @@ export default function RootLayout({
             },
           }}
         />
+        </MotionProvider>
       </body>
     </html>
   );

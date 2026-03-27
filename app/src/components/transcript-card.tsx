@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { FileAudio, Clock, Globe, Copy, Trash2, ChevronRight } from "lucide-react";
 import { Transcript } from "@/lib/types";
 import { formatFileSize, formatDuration, formatDate } from "@/lib/store";
@@ -25,7 +25,7 @@ export function TranscriptCard({
   };
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -89,6 +89,6 @@ export function TranscriptCard({
           <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
         </button>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
