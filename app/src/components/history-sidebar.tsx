@@ -47,12 +47,15 @@ export function HistorySidebar({ transcripts, selectedId, onSelect, onDelete }: 
         ) : (
           <div className="space-y-1">
             {filtered.map((t, i) => (
-              <m.button
+              <m.div
                 key={t.id}
+                role="button"
+                tabIndex={0}
                 initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.015 }}
                 onClick={() => onSelect(t)}
-                className={`group relative w-full rounded-lg px-3 py-3 text-left transition-colors ${
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(t); } }}
+                className={`group relative w-full cursor-pointer rounded-lg px-3 py-3 text-left transition-colors ${
                   selectedId === t.id
                     ? "bg-primary/10 text-foreground"
                     : "text-foreground/80 hover:bg-secondary"
@@ -77,7 +80,7 @@ export function HistorySidebar({ transcripts, selectedId, onSelect, onDelete }: 
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
-              </m.button>
+              </m.div>
             ))}
           </div>
         )}
