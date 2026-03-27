@@ -5,6 +5,7 @@ import { AnimatePresence, m } from "framer-motion";
 import { FileAudio, Key, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { isValidApiKey } from "@/lib/validate-api-key";
 
 const ACCEPTED_TYPES = [
   "audio/mpeg", "audio/mp4", "audio/wav", "audio/webm",
@@ -112,7 +113,15 @@ export function UploadZone({ onStartTranscription, busy }: UploadZoneProps) {
               <Button
                 size="sm" className="h-9 rounded-lg bg-primary px-4 text-primary-foreground hover:bg-primary/90"
                 onClick={() => {
-                  if (apiKey) { localStorage.setItem(API_KEY_KEY, apiKey); toast.success("Saved"); }
+                  const trimmed = apiKey.trim();
+                  if (!trimmed) { toast.error("Please enter an API key."); return; }
+                  if (!isValidApiKey(trimmed)) {
+                    toast.error("Invalid key. OpenAI keys start with sk- followed by at least 20 characters.");
+                    return;
+                  }
+                  localStorage.setItem(API_KEY_KEY, trimmed);
+                  setLocalKey(trimmed);
+                  toast.success("Saved");
                   setShowKeyInput(false);
                 }}
               >

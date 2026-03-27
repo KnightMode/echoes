@@ -8,6 +8,7 @@ import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { existsSync } from "fs";
 import type { TranscriptionSegment } from "openai/resources/audio/transcriptions";
+import { isValidApiKey } from "@/lib/validate-api-key";
 
 const execFileAsync = promisify(execFile);
 const WHISPER_MAX_SIZE = 24 * 1024 * 1024;
@@ -56,10 +57,6 @@ function sanitizeError(err: unknown): string {
     }
   }
   return "Transcription failed. Please try again.";
-}
-
-function isValidApiKey(key: string): boolean {
-  return /^sk-[a-zA-Z0-9_-]{20,}$/.test(key.trim());
 }
 
 function getExtension(fileName: string): string {
