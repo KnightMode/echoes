@@ -118,14 +118,21 @@ export async function pickLibraryDirectory(): Promise<FileSystemDirectoryHandle 
 }
 
 export async function restoreLibraryDirectory(): Promise<FileSystemDirectoryHandle | null> {
-  const handle = await getLibraryDirectoryHandle();
-  if (!handle) return null;
-  const ok = await ensureReadWritePermission(handle);
-  if (!ok) {
-    await clearLibraryDirectoryHandle();
+  try {
+    const handle = await getLibraryDirectoryHandle();
+    if (!handle) return null;
+    // Only query (never request) permission here — requestPermission requires a
+    // user gesture and will hang or throw when called on page load.
+    const h = handle as FileSystemDirectoryHandle & FsPerm;
+    if (!h.queryPermission) return handle;
+    const perm = await h.queryPermission({ mode: "readwrite" });
+    if (perm === "granted") return handle;
+    // 'denied' — clear the stale handle; 'prompt' — user must reconnect via button
+    if (perm === "denied") await clearLibraryDirectoryHandle();
+    return null;
+  } catch {
     return null;
   }
-  return handle;
 }
 
 export function audioFileName(id: string, originalFileName: string): string {

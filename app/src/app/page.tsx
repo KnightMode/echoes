@@ -113,8 +113,11 @@ export default function Home() {
     let cancelled = false;
     (async () => {
       setLibraryLoading(true);
-      await refreshLibrary();
-      if (!cancelled) setLibraryLoading(false);
+      try {
+        await refreshLibrary();
+      } finally {
+        if (!cancelled) setLibraryLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
