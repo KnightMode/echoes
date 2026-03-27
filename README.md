@@ -1,67 +1,50 @@
 # Echoes
 
-Echoes is a polished Next.js audio transcription app powered by OpenAI Whisper. Upload any recording, watch it transcribe in real time, and read the result in a clean, immersive interface with synced audio playback.
+**Accurate audio transcription powered by OpenAI Whisper — everything stays on your computer.**
+
+![Echoes](docs/screenshot.png)
+
+---
+
+Drop any audio file. Watch it transcribe in real time. Your recordings, transcripts, and API key never leave your machine.
 
 ## Features
 
-### Transcription
+**Transcription**
+- Drag-and-drop or click to upload — MP3, WAV, M4A, FLAC, OGG, WebM, WMV up to 250 MB
+- Real-time streaming — partial text appears as Whisper processes each segment
+- Large file support — files over 24 MB are auto-chunked into 10-minute segments with `ffmpeg`, transcribed in parallel, and reassembled with correct timestamps
+- Queue multiple files — drop a second file while one is already transcribing; it queues automatically
+- Cancel anytime — stop an active transcription and return home instantly
 
-- **Drag-and-drop upload** — drop an audio file or click to browse. Supports MP3, WAV, M4A, FLAC, OGG, WebM, and WMV up to 250 MB.
-- **Real-time streaming** — progress updates and partial transcript text stream to the UI as Whisper processes each segment.
-- **Automatic chunking** — files over 24 MB are split into 10-minute MP3 segments with `ffmpeg`, transcribed in parallel, and reassembled into one transcript with correct timestamps.
-- **Background transcription** — start a transcription, then freely navigate to other screens. The process continues in the background with a persistent indicator bar showing filename, progress, and a button to jump back to the live view.
+**Reading & Playback**
+- Synced audio player — timed transcript blocks highlight as audio plays; click any block to seek
+- Serif reading typography — transcript content renders in a comfortable reading font, distinct from the UI
+- Copy & export — copy to clipboard, or download as plain text or Markdown
 
-### Reading & Playback
+**Library**
+- Disk-based storage — transcripts and audio saved directly to a folder you choose on your computer, not browser storage
+- Folders — organise transcripts into named folders
+- Bulk actions — select, move, or delete multiple transcripts at once
+- Recents — most recent transcripts visible on the home screen without opening the library
 
-- **Custom audio player** — a built-in player with play/pause, skip forward/back, scrub bar, playback speed control (0.75x–2x), and mute toggle. Sticks below the header so it stays accessible while scrolling.
-- **Synced transcript blocks** — timed segments highlight as audio plays. Click any block to jump to that moment in the recording.
-- **Serif reading typography** — transcript content renders in Crimson Pro for comfortable long-form reading, distinct from the interface font.
-- **Copy & export** — copy the full transcript to clipboard, or download as plain text or Markdown.
+**Privacy**
+- Your OpenAI API key is stored only in `localStorage` and sent directly to OpenAI — never to Echoes servers
+- All library data lives in a folder on your file system. No accounts, no cloud sync, no telemetry
 
-### Library & History
+## Getting Started
 
-- **Local persistence** — transcripts are saved to `localStorage` and audio files to IndexedDB. Everything stays in the browser with no server-side storage.
-- **Library drawer** — a slide-over panel lists all saved transcripts with search by filename or content. Accessible from any screen.
-- **Delete management** — remove individual transcripts and their associated audio files.
-
-### UI & UX
-
-- **Centered single-column layout** — focused, distraction-free interface with clear visual hierarchy.
-- **Scroll-to-top button** — a floating button appears after scrolling, available on every view.
-- **Animated transitions** — smooth page transitions, staggered entry animations, and progress indicators built with Framer Motion.
-- **Dark theme** — deep blue-black backgrounds with warm apricot accents. Manrope for interface, IBM Plex Mono for timestamps and data.
-- **API key management** — enter your OpenAI key once in the UI. It's stored in `localStorage` and masked after entry.
-
-## Project Structure
-
-The application lives in [`app/`](app/).
-
-- `app/src/app/page.tsx` — main app shell, view routing, background transcription indicator
-- `app/src/app/api/transcribe/route.ts` — server route handling uploads, Whisper API calls, chunking, and streaming
-- `app/src/lib/use-transcription.ts` — custom hook that owns the fetch/streaming lifecycle, persists across view changes
-- `app/src/lib/store.ts` — localStorage helpers for transcripts
-- `app/src/lib/audio-store.ts` — IndexedDB helpers for audio file storage
-- `app/src/components/upload-zone.tsx` — file selection, drag-and-drop, API key input
-- `app/src/components/live-transcript.tsx` — real-time transcription progress and streaming text
-- `app/src/components/transcript-viewer.tsx` — reading view with custom audio player and synced segments
-- `app/src/components/history-sidebar.tsx` — searchable library drawer
-- `app/src/components/scroll-to-top.tsx` — floating scroll-to-top button
-- `app/src/components/waveform.tsx` — animated waveform visualization
-
-## Requirements
-
+**Requirements**
 - Node.js 20+
-- npm
-- `ffmpeg` and `ffprobe` on your `PATH` (only needed for files over 24 MB)
-- An OpenAI API key with Whisper access
-
-On macOS:
+- An [OpenAI API key](https://platform.openai.com/api-keys) with Whisper access
+- `ffmpeg` on your `PATH` *(only needed for files over 24 MB)*
 
 ```bash
+# macOS
 brew install ffmpeg
 ```
 
-## Getting Started
+**Run**
 
 ```bash
 cd app
@@ -69,39 +52,46 @@ npm install
 npm run dev -- -p 3456
 ```
 
-Open `http://localhost:3456`. Enter your OpenAI API key when prompted.
+Open `http://localhost:3456`, drop an audio file, and follow the prompt to choose a save folder.
 
-## How Transcription Works
+## How It Works
 
-### Files up to 24 MB
+| File size | Path |
+|-----------|------|
+| ≤ 24 MB | Sent directly to the Whisper API; status and text stream back via NDJSON |
+| > 24 MB | Split into 10-min MP3 chunks with `ffmpeg` → each chunk transcribed in parallel → reassembled with offset-corrected timestamps |
 
-Sent directly to the Whisper API. Status updates and the full result stream back via NDJSON.
+Transcription runs inside a React hook at the page root, so navigating between views never interrupts an in-progress job. A persistent indicator bar shows filename, progress percentage, and a live view button.
 
-### Files over 24 MB
+## Project Structure
 
-1. Written to a temporary directory on the server
-2. Probed with `ffprobe` for duration
-3. Split into 10-minute MP3 segments with `ffmpeg`
-4. Each segment transcribed with Whisper, streaming partial text as segments complete
-5. Reassembled into one transcript with offset-corrected timestamps
-6. Temporary files cleaned up
-
-### Background Processing
-
-The transcription fetch runs inside a React hook (`useTranscription`) at the page level. Because the hook lives above the view layer, navigating between home, library, or other transcripts does not interrupt the stream. A sticky indicator bar appears below the header showing real-time progress.
+```
+app/
+├── src/
+│   ├── app/
+│   │   ├── page.tsx                  # App shell, view routing, transcription state
+│   │   └── api/transcribe/route.ts   # Whisper API, chunking, NDJSON streaming
+│   ├── components/
+│   │   ├── upload-zone.tsx           # Drag-and-drop, API key input
+│   │   ├── live-transcript.tsx       # Real-time progress and streaming text
+│   │   ├── transcript-viewer.tsx     # Reading view with synced audio player
+│   │   ├── history-sidebar.tsx       # Library drawer with search and bulk actions
+│   │   └── waveform.tsx              # Animated waveform visualization
+│   └── lib/
+│       ├── use-transcription.ts      # Fetch/streaming lifecycle hook
+│       ├── fs-library.ts             # File System Access API helpers
+│       ├── library-ops.ts            # CRUD operations on the library
+│       └── store.ts                  # Shared utilities and formatters
+```
 
 ## Scripts
 
-From `app/`:
-
 ```bash
-npm run dev      # start dev server
-npm run build    # production build
-npm run lint     # run ESLint
+npm run dev      # Start dev server
+npm run build    # Production build
+npm run lint     # ESLint
 ```
 
-## Notes
+## Stack
 
-- All data is stored client-side (localStorage + IndexedDB). There is no database.
-- API keys are stored in `localStorage`. This app is designed for local/demo use.
-- The server route streams NDJSON events, not WebSockets, for simplicity.
+Next.js · TypeScript · Tailwind CSS · Framer Motion · OpenAI Whisper · File System Access API
