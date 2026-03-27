@@ -9,6 +9,8 @@ import { randomUUID } from "crypto";
 import { existsSync } from "fs";
 import type { TranscriptionSegment } from "openai/resources/audio/transcriptions";
 import { isValidApiKey } from "@/lib/validate-api-key";
+import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 
 const execFileAsync = promisify(execFile);
 const WHISPER_MAX_SIZE = 24 * 1024 * 1024;
@@ -217,7 +219,7 @@ export async function POST(request: NextRequest) {
         try {
           send({ type: "status", message: "Analyzing audio file...", progress: 5 });
 
-          const { stdout: probeOut } = await execFileAsync("ffprobe", [
+          const { stdout: probeOut } = await execFileAsync(ffprobeStatic.path, [
             "-v", "quiet",
             "-show_entries", "format=duration",
             "-of", "csv=p=0",
@@ -246,7 +248,7 @@ export async function POST(request: NextRequest) {
           });
 
           const chunkPattern = join(workDir, `chunk-%03d.mp3`);
-          await execFileAsync("ffmpeg", [
+          await execFileAsync(ffmpegPath!, [
             "-i", inputPath,
             "-f", "segment",
             "-segment_time", String(CHUNK_DURATION_SECONDS),

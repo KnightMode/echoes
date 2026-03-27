@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["openai"],
+  serverExternalPackages: ["openai", "ffmpeg-static", "ffprobe-static"],
   experimental: {
     serverActions: {
       bodySizeLimit: "250mb",
