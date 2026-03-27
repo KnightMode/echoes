@@ -2,7 +2,7 @@
 
 **Accurate audio transcription powered by OpenAI Whisper — everything stays on your computer.**
 
-![Echoes](docs/screenshot.png)
+![Echoes](docs/demo.gif)
 
 ---
 
