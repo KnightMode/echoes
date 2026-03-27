@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { motion } from "framer-motion";
-import { CheckCircle2, FileAudio } from "lucide-react";
+import { m } from "framer-motion";
+import { CheckCircle2, FileAudio, StopCircle } from "lucide-react";
 import { Waveform } from "./waveform";
 
 function splitIntoParagraphs(text: string): string[] {
@@ -25,9 +25,11 @@ interface LiveTranscriptProps {
   status: string;
   fileName: string;
   active: boolean;
+  queueCount?: number;
+  onCancel?: () => void;
 }
 
-export function LiveTranscript({ text, progress, status, fileName, active }: LiveTranscriptProps) {
+export function LiveTranscript({ text, progress, status, fileName, active, queueCount = 0, onCancel }: LiveTranscriptProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const paragraphs = splitIntoParagraphs(text);
 
@@ -58,20 +60,38 @@ export function LiveTranscript({ text, progress, status, fileName, active }: Liv
             <p className="truncate text-sm font-medium">{fileName || "Audio file"}</p>
             <p className="mt-0.5 text-[13px] text-muted-foreground">{status || "Preparing..."}</p>
           </div>
-          <span className="shrink-0 font-mono text-xl font-bold tabular-nums text-primary">
-            {Math.round(progress)}%
-          </span>
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="font-mono text-xl font-bold tabular-nums text-primary">
+              {Math.round(progress)}%
+            </span>
+            {active && onCancel && (
+              <button
+                onClick={onCancel}
+                title="Stop transcription"
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              >
+                <StopCircle className="h-3.5 w-3.5" />
+                Stop
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Progress bar */}
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-secondary">
-          <motion.div
+          <m.div
             className="h-full rounded-full bg-primary"
             initial={{ width: "0%" }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           />
         </div>
+
+        {queueCount > 0 && (
+          <p className="mt-2.5 text-[12px] text-muted-foreground">
+            <span className="font-medium text-primary">{queueCount}</span> more file{queueCount > 1 ? "s" : ""} queued — will start automatically
+          </p>
+        )}
       </div>
 
       {/* Waveform */}
@@ -85,8 +105,8 @@ export function LiveTranscript({ text, progress, status, fileName, active }: Liv
       <div className="max-h-[55vh] overflow-y-auto rounded-xl border border-border bg-card p-5">
         {paragraphs.length > 0 ? (
           <div className="space-y-4">
-            {paragraphs.map((p, i) => (
-              <motion.p
+            {paragraphs.map((p) => (
+              <m.p
                 key={`${p.slice(0, 30)}-${p.length}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -94,7 +114,7 @@ export function LiveTranscript({ text, progress, status, fileName, active }: Liv
                 className="font-reading text-[16px] leading-[1.8] text-foreground/80"
               >
                 {p}
-              </motion.p>
+              </m.p>
             ))}
           </div>
         ) : (
@@ -107,7 +127,7 @@ export function LiveTranscript({ text, progress, status, fileName, active }: Liv
         )}
 
         {active && (
-          <motion.span
+          <m.span
             animate={{ opacity: [1, 0] }}
             transition={{ duration: 0.8, repeat: Infinity }}
             className="mt-2 inline-block h-4 w-0.5 bg-primary align-middle"
