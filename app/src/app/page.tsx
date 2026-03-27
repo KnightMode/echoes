@@ -168,7 +168,8 @@ export default function Home() {
           segments: result.segments,
         };
         if (!libraryRoot) {
-          // Browser doesn't support folder access — show result in-memory only
+          // No folder connected — keep transcript in memory so recents still work
+          setTranscripts((prev) => [transcript, ...prev]);
           dispatch({ type: "SELECT", transcript });
           return;
         }
@@ -226,10 +227,11 @@ export default function Home() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!libraryRoot) return;
-      const t = transcripts.find((x) => x.id === id);
-      if (!t) return;
-      await removeTranscript(libraryRoot, t);
+      if (libraryRoot) {
+        const t = transcripts.find((x) => x.id === id);
+        if (t) await removeTranscript(libraryRoot, t);
+      }
+      setTranscripts((prev) => prev.filter((t) => t.id !== id));
       dispatch({ type: "DELETE_SELECTED", id });
       toast.success("Transcript deleted");
     },
@@ -238,11 +240,13 @@ export default function Home() {
 
   const handleBulkDelete = useCallback(
     async (ids: string[]) => {
-      if (!libraryRoot || ids.length === 0) return;
+      if (ids.length === 0) return;
       const idSet = new Set(ids);
-      const toRemove = transcripts.filter((t) => idSet.has(t.id));
-      if (toRemove.length === 0) return;
-      await removeTranscriptsBulk(libraryRoot, toRemove);
+      if (libraryRoot) {
+        const toRemove = transcripts.filter((t) => idSet.has(t.id));
+        if (toRemove.length > 0) await removeTranscriptsBulk(libraryRoot, toRemove);
+      }
+      setTranscripts((prev) => prev.filter((t) => !idSet.has(t.id)));
       const openId = state.selected?.id;
       if (openId && idSet.has(openId)) {
         dispatch({ type: "DELETE_SELECTED", id: openId });
@@ -367,28 +371,28 @@ export default function Home() {
                 New
               </button>
             )}
-            {libraryRoot ? (
-              <>
-                <button
-                  onClick={() => dispatch({ type: "OPEN_DRAWER" })}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  Library
-                  <span className="ml-0.5 rounded bg-secondary px-1.5 py-0.5 font-mono text-[11px]">
-                    {transcripts.length}
-                  </span>
-                </button>
-                <button
-                    onClick={() => void handleConnectLibrary()}
-                    title="Change library folder"
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  >
-                    <HardDrive className="h-3.5 w-3.5" />
-                    Change folder
-                  </button>
-              </>
-            ) : null}
+            <button
+              onClick={() => dispatch({ type: "OPEN_DRAWER" })}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              Library
+              {transcripts.length > 0 && (
+                <span className="ml-0.5 rounded bg-secondary px-1.5 py-0.5 font-mono text-[11px]">
+                  {transcripts.length}
+                </span>
+              )}
+            </button>
+            {libraryRoot && (
+              <button
+                onClick={() => void handleConnectLibrary()}
+                title="Change library folder"
+                className="hidden items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-flex"
+              >
+                <HardDrive className="h-3.5 w-3.5" />
+                Change folder
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -604,7 +608,7 @@ export default function Home() {
                     <span>You&apos;ll be asked to choose a save folder on first upload</span>
                   )}
                 </div>
-                {libraryRoot && transcripts.length > 0 && (
+                {transcripts.length > 0 && (
                   <m.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
