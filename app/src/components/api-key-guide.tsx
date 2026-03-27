@@ -89,14 +89,14 @@ export function ApiKeyGuide() {
               </div>
 
               <p className="mt-3 text-[12px] text-muted-foreground">
-                OpenAI charges per minute of audio transcribed. Check{" "}
+                OpenAI charges per minute of audio transcribed. See the Transcription section on the{" "}
                 <a
-                  href="https://developers.openai.com/api/docs/pricing#transcription-other-models"
+                  href="https://developers.openai.com/api/docs/pricing"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  pricing
+                  pricing page
                 </a>{" "}
                 for current Whisper API rates.
               </p>
