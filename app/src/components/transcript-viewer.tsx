@@ -170,28 +170,35 @@ export function TranscriptViewer({
   return (
     <div className="space-y-6">
       {/* Top bar */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <button onClick={onBack} className="mt-1 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+      <div className="space-y-2">
+        {/* Row 1: back + title + copy/download */}
+        <div className="flex items-start gap-2">
+          <button onClick={onBack} className="mt-0.5 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
-              {transcript.fileName.replace(/\.[^/.]+$/, "")}
-            </h1>
-            <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{formatDuration(transcript.duration)}</span>
-              <span className="inline-flex items-center gap-1"><FileAudio className="h-3 w-3" />{formatFileSize(transcript.fileSize)}</span>
-              {transcript.language && <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />{transcript.language}</span>}
-              <span>{formatDate(transcript.createdAt)}</span>
-              <span>{wordCount.toLocaleString("en-US")} words &middot; {readTime} min read</span>
-            </div>
+          <h1 className="min-w-0 flex-1 text-xl font-bold leading-snug tracking-tight [overflow-wrap:anywhere] sm:text-2xl">
+            {transcript.fileName.replace(/\.[^/.]+$/, "")}
+          </h1>
+          <div className="flex shrink-0 items-center gap-1">
+            <button onClick={copyText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Copy">
+              <Copy className="h-4 w-4" />
+            </button>
+            <button onClick={downloadText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Download TXT">
+              <Download className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-1.5">
-            <span className="hidden text-[11px] text-muted-foreground sm:inline">Folder</span>
+        {/* Row 2: metadata + folder selector */}
+        <div className="flex flex-wrap items-center justify-between gap-y-2 pl-10">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{formatDuration(transcript.duration)}</span>
+            <span className="inline-flex items-center gap-1"><FileAudio className="h-3 w-3" />{formatFileSize(transcript.fileSize)}</span>
+            {transcript.language && <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />{transcript.language}</span>}
+            <span>{formatDate(transcript.createdAt)}</span>
+            <span>{wordCount.toLocaleString("en-US")} words &middot; {readTime} min read</span>
+          </div>
+          {folders.length > 0 && (
             <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/50 px-2 py-1">
               <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <select
@@ -208,15 +215,7 @@ export function TranscriptViewer({
                 ))}
               </select>
             </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button onClick={copyText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Copy">
-              <Copy className="h-4 w-4" />
-            </button>
-            <button onClick={downloadText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Download TXT">
-              <Download className="h-4 w-4" />
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
@@ -272,7 +271,7 @@ export function TranscriptViewer({
                 transition={{ delay: i * 0.015, duration: 0.3 }}
                 onClick={() => audioUrl && void jumpTo(group.segments[0])}
                 disabled={!audioUrl}
-                className={`group flex w-full gap-4 rounded-xl px-4 py-3 text-left transition-colors ${
+                className={`group flex w-full gap-3 rounded-xl px-3 py-3 text-left transition-colors sm:gap-4 sm:px-4 ${
                   i === activeGroupIndex
                     ? "bg-primary/[0.07]"
                     : "hover:bg-secondary/50"
