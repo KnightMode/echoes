@@ -59,8 +59,14 @@ export function useTranscriptionQueue({ onComplete }: UseTranscriptionQueueOptio
         signal: abortController.signal,
       });
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Transcription failed");
+        let message = "Transcription failed";
+        try {
+          const data = await response.json();
+          message = data.error || message;
+        } catch {
+          if (response.status === 413) message = "File too large. Maximum size is 250MB.";
+        }
+        throw new Error(message);
       }
 
       const reader = response.body?.getReader();
