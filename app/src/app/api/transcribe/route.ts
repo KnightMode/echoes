@@ -14,6 +14,8 @@ const execFileAsync = promisify(execFile);
 const WHISPER_MAX_SIZE = 24 * 1024 * 1024;
 const MAX_UPLOAD_SIZE = 250 * 1024 * 1024;
 const CHUNK_DURATION_SECONDS = 600;
+const MAX_CHUNKS = 150; // ~25 hours of audio
+const OPENAI_TIMEOUT_MS = 270_000; // 4.5 min — well under maxDuration of 5 min
 
 // ── In-memory rate limiter (per IP, resets on deploy) ──
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
@@ -43,6 +45,15 @@ const ALLOWED_EXTENSIONS = new Set(["mp3", "mp4", "wav", "webm", "ogg", "flac", 
 const ALLOWED_MIME_PREFIXES = ["audio/", "video/"];
 
 export const maxDuration = 300;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("OpenAI request timed out")), ms)
+    ),
+  ]);
+}
 
 function sanitizeError(err: unknown): string {
   if (err instanceof OpenAI.APIError) {
@@ -83,7 +94,25 @@ function mapSegments(
 }
 
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+  // CSRF: reject cross-origin requests (browser always sends Origin on cross-origin POST)
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host");
+  if (origin && host) {
+    try {
+      const originHost = new URL(origin).host;
+      if (originHost !== host) {
+        return Response.json({ error: "Forbidden" }, { status: 403 });
+      }
+    } catch {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
+  // Use platform-provided IP (Vercel sets request.ip from actual connection),
+  // falling back to proxy headers. Rate limiting is best-effort; primary
+  // protection is the API key requirement.
+  const ip = request.ip
+    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || request.headers.get("x-real-ip")
     || "unknown";
 
@@ -135,11 +164,14 @@ export async function POST(request: NextRequest) {
           try {
             send({ type: "status", message: "Sending to Whisper API...", progress: 20 });
 
-            const transcription = await openai.audio.transcriptions.create({
-              file: file,
-              model: "whisper-1",
-              response_format: "verbose_json",
-            });
+            const transcription = await withTimeout(
+              openai.audio.transcriptions.create({
+                file: file,
+                model: "whisper-1",
+                response_format: "verbose_json",
+              }),
+              OPENAI_TIMEOUT_MS
+            );
 
             send({ type: "status", message: "Processing complete", progress: 100 });
             send({ type: "partial_text", text: transcription.text, chunk: 0 });
@@ -201,6 +233,12 @@ export async function POST(request: NextRequest) {
 
           const numChunks = Math.ceil(totalDuration / CHUNK_DURATION_SECONDS);
 
+          if (numChunks > MAX_CHUNKS) {
+            send({ type: "error", error: "Audio file exceeds maximum supported duration." });
+            controller.close();
+            return;
+          }
+
           send({
             type: "status",
             message: `Splitting into ${numChunks} segments...`,
@@ -251,11 +289,14 @@ export async function POST(request: NextRequest) {
               type: "audio/mpeg",
             });
 
-            const transcription = await openai.audio.transcriptions.create({
-              file: chunkFile,
-              model: "whisper-1",
-              response_format: "verbose_json",
-            });
+            const transcription = await withTimeout(
+              openai.audio.transcriptions.create({
+                file: chunkFile,
+                model: "whisper-1",
+                response_format: "verbose_json",
+              }),
+              OPENAI_TIMEOUT_MS
+            );
 
             const offset = combinedDuration;
             fullText += (fullText ? " " : "") + transcription.text;

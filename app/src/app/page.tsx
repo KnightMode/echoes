@@ -44,7 +44,7 @@ import { toast } from "sonner";
 
 type View = "home" | "live" | "viewer";
 
-const CYCLING_WORDS = ["meetings", "interviews", "podcasts", "lectures", "voice memos"];
+const CYCLING_WORDS = ["meetings", "interviews", "podcasts", "lectures", "voice memos", "audio"];
 
 interface AppState {
   selected: Transcript | null;
@@ -550,7 +550,7 @@ export default function Home() {
                   transition={{ delay: 0.1, duration: 0.4 }}
                   className="text-[1.75rem] font-bold leading-tight tracking-tight sm:text-[2.25rem]"
                 >
-                  Transcribe your{" "}
+                  Transcribe{" "}
                   <span className="relative inline-grid [grid-template-areas:'stack']">
                     <AnimatePresence mode="wait">
                       <m.span
