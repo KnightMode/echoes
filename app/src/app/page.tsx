@@ -132,11 +132,13 @@ export default function Home() {
   }, [refreshLibrary]);
 
   const handleConnectLibrary = useCallback(async () => {
-    if (!isFileSystemAccessSupported()) {
-      toast.error("Folder access isn't supported in this browser. Use Chrome or Edge.");
+    const root = await pickLibraryDirectory();
+    if (!root) {
+      if (!isFileSystemAccessSupported()) {
+        toast.error("Folder access isn't supported in this browser. Update Safari or use Chrome/Edge.");
+      }
       return;
     }
-    const root = await pickLibraryDirectory();
     if (!root) return;
     const migrated = await migrateLegacyToDiskIfNeeded(root);
     if (migrated) {
@@ -205,20 +207,14 @@ export default function Home() {
   const handleStartTranscription = useCallback(
     async (file: File, apiKey: string) => {
       if (!libraryRoot) {
-        if (!isFileSystemAccessSupported()) {
-          // Safari and Firefox don't support showDirectoryPicker — transcribe in-memory only
-          if (!transcription.busy) {
-            dispatch({ type: "GO_LIVE" });
-          }
-          transcription.enqueue(file, apiKey);
-          return;
-        }
         const root = await pickLibraryDirectory();
-        if (!root) return;
-        const migrated = await migrateLegacyToDiskIfNeeded(root);
-        if (migrated) toast.success("Imported your previous library into this folder.");
-        await refreshLibrary();
-        toast.success("Library folder connected.");
+        if (root) {
+          const migrated = await migrateLegacyToDiskIfNeeded(root);
+          if (migrated) toast.success("Imported your previous library into this folder.");
+          await refreshLibrary();
+          toast.success("Library folder connected.");
+        }
+        // If root is null, folder picker was cancelled or unsupported — proceed in-memory
       }
       if (!transcription.busy) {
         dispatch({ type: "GO_LIVE" });
@@ -322,7 +318,6 @@ export default function Home() {
   const openTranscript = useCallback((t: Transcript) => dispatch({ type: "SELECT", transcript: t }), []);
 
   const bgTranscribing = transcription.busy && state.view !== "live";
-  const fsSupported = isFileSystemAccessSupported();
   const uploadDisabled = libraryLoading;
   const uploadDisabledReason = "Loading library…";
 
@@ -384,8 +379,7 @@ export default function Home() {
                     {transcripts.length}
                   </span>
                 </button>
-                {fsSupported && (
-                  <button
+                <button
                     onClick={() => void handleConnectLibrary()}
                     title="Change library folder"
                     className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -393,7 +387,6 @@ export default function Home() {
                     <HardDrive className="h-3.5 w-3.5" />
                     Change folder
                   </button>
-                )}
               </>
             ) : null}
           </div>
@@ -682,15 +675,13 @@ export default function Home() {
                     <LibraryStorageHint />
                   </div>
                   <div className="flex items-center gap-2">
-                    {fsSupported && (
-                      <button
-                        type="button"
-                        onClick={() => void handleConnectLibrary()}
-                        className="text-[12px] text-muted-foreground hover:text-foreground"
-                      >
-                        Change folder
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectLibrary()}
+                      className="text-[12px] text-muted-foreground hover:text-foreground"
+                    >
+                      Change folder
+                    </button>
                     <button
                       onClick={() => dispatch({ type: "CLOSE_DRAWER" })}
                       className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
