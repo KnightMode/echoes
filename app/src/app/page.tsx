@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { AnimatePresence, m } from "framer-motion";
 import {
   ArrowRight,
@@ -87,6 +87,8 @@ export default function Home() {
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
+  // Session-only audio URLs for in-memory transcripts (no folder connected)
+  const inMemoryAudio = useRef<Map<string, string>>(new Map());
 
   const [state, dispatch] = useReducer(appReducer, {
     selected: null,
@@ -171,9 +173,12 @@ export default function Home() {
           segments: result.segments,
         };
         if (!libraryRoot) {
-          // No folder connected — keep transcript in memory so recents still work
+          // No folder connected — keep transcript and audio in memory for the session
+          const url = URL.createObjectURL(sourceFile);
+          inMemoryAudio.current.set(transcript.id, url);
           setTranscripts((prev) => [transcript, ...prev]);
           dispatch({ type: "SELECT", transcript });
+          dispatch({ type: "SET_AUDIO_URL", url });
           return;
         }
         await addTranscript(libraryRoot, transcript, sourceFile);
@@ -186,8 +191,14 @@ export default function Home() {
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
-    if (!state.selected || !libraryRoot) {
+    if (!state.selected) {
       dispatch({ type: "SET_AUDIO_URL", url: null });
+      return;
+    }
+    if (!libraryRoot) {
+      // Check session-only audio store for in-memory transcripts
+      const url = inMemoryAudio.current.get(state.selected.id) ?? null;
+      dispatch({ type: "SET_AUDIO_URL", url });
       return;
     }
     const load = async () => {
