@@ -91,7 +91,7 @@ export function ApiKeyGuide() {
               <p className="mt-3 text-[12px] text-muted-foreground">
                 OpenAI charges per minute of audio transcribed. Check{" "}
                 <a
-                  href="https://openai.com/pricing"
+                  href="https://platform.openai.com/docs/pricing#audio-models"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
