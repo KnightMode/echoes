@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
   // Use platform-provided IP (Vercel sets request.ip from actual connection),
   // falling back to proxy headers. Rate limiting is best-effort; primary
   // protection is the API key requirement.
-  const ip = request.ip
+  const ip = (request as unknown as { ip?: string }).ip
     || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || request.headers.get("x-real-ip")
     || "unknown";
