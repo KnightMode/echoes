@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
-  Calendar,
   Clock,
   Copy,
   Download,
@@ -13,16 +12,13 @@ import {
   Pause,
   Play,
   Share2,
+  SkipBack,
   SkipForward,
-  Type,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Transcript, TranscriptSegment } from "@/lib/types";
-import {
-  formatDate,
-  formatDuration,
-  formatFileSize,
-} from "@/lib/store";
+import { formatDate, formatDuration, formatFileSize } from "@/lib/store";
 import { toast } from "sonner";
 
 function splitIntoParagraphs(text: string): string[] {
@@ -30,57 +26,28 @@ function splitIntoParagraphs(text: string): string[] {
   const paragraphs: string[] = [];
   let current = "";
   let count = 0;
-
   for (const sentence of sentences) {
     current += sentence;
     count += 1;
-    if (count >= 4) {
-      paragraphs.push(current.trim());
-      current = "";
-      count = 0;
-    }
+    if (count >= 4) { paragraphs.push(current.trim()); current = ""; count = 0; }
   }
-
   if (current.trim()) paragraphs.push(current.trim());
   return paragraphs;
 }
 
 function groupSegments(segments: TranscriptSegment[]) {
-  const groups: Array<{
-    start: number;
-    end: number;
-    text: string;
-    segments: TranscriptSegment[];
-  }> = [];
-
+  const groups: Array<{ start: number; end: number; text: string; segments: TranscriptSegment[]; }> = [];
   let current: TranscriptSegment[] = [];
   let wordCount = 0;
-
-  for (const segment of segments) {
-    current.push(segment);
-    wordCount += segment.text.split(/\s+/).filter(Boolean).length;
-
+  for (const seg of segments) {
+    current.push(seg);
+    wordCount += seg.text.split(/\s+/).filter(Boolean).length;
     if (wordCount >= 60) {
-      groups.push({
-        start: current[0].start,
-        end: current[current.length - 1].end,
-        text: current.map((item) => item.text).join(" ").trim(),
-        segments: current,
-      });
-      current = [];
-      wordCount = 0;
+      groups.push({ start: current[0].start, end: current[current.length - 1].end, text: current.map((s) => s.text).join(" ").trim(), segments: current });
+      current = []; wordCount = 0;
     }
   }
-
-  if (current.length > 0) {
-    groups.push({
-      start: current[0].start,
-      end: current[current.length - 1].end,
-      text: current.map((item) => item.text).join(" ").trim(),
-      segments: current,
-    });
-  }
-
+  if (current.length > 0) groups.push({ start: current[0].start, end: current[current.length - 1].end, text: current.map((s) => s.text).join(" ").trim(), segments: current });
   return groups;
 }
 
@@ -90,308 +57,177 @@ interface TranscriptViewerProps {
   onBack: () => void;
 }
 
-export function TranscriptViewer({
-  transcript,
-  audioUrl,
-  onBack,
-}: TranscriptViewerProps) {
+export function TranscriptViewer({ transcript, audioUrl, onBack }: TranscriptViewerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const wordCount = transcript.text.split(/\s+/).filter(Boolean).length;
   const paragraphs = splitIntoParagraphs(transcript.text);
   const readTime = Math.max(1, Math.ceil(wordCount / 200));
   const segments = useMemo(() => transcript.segments ?? [], [transcript.segments]);
   const groupedSegments = useMemo(() => groupSegments(segments), [segments]);
 
-  const activeSegmentId = useMemo(() => {
-    const activeSegment = segments.find(
-      (segment) => currentTime >= segment.start && currentTime < segment.end
-    );
-    return activeSegment?.id ?? null;
-  }, [currentTime, segments]);
+  const activeGroupIndex = useMemo(() => {
+    for (let i = 0; i < groupedSegments.length; i++) {
+      const g = groupedSegments[i];
+      if (currentTime >= g.start && currentTime < g.end) return i;
+    }
+    return -1;
+  }, [currentTime, groupedSegments]);
 
-  const copyText = () => {
-    navigator.clipboard.writeText(transcript.text);
-    toast.success("Copied to clipboard");
-  };
-
+  const copyText = () => { navigator.clipboard.writeText(transcript.text); toast.success("Copied"); };
   const downloadText = () => {
     const blob = new Blob([transcript.text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${transcript.fileName.replace(/\.[^/.]+$/, "")}-transcript.txt`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    toast.success("Downloaded transcript");
+    const a = document.createElement("a"); a.href = url;
+    a.download = `${transcript.fileName.replace(/\.[^/.]+$/, "")}.txt`; a.click();
+    URL.revokeObjectURL(url); toast.success("Downloaded");
   };
-
   const downloadMarkdown = () => {
-    const markdown = [
-      `# ${transcript.fileName}`,
-      "",
-      `> ${formatDate(transcript.createdAt)} | ${formatDuration(
-        transcript.duration
-      )} | ${transcript.language || "Unknown language"}`,
-      "",
-      "---",
-      "",
-      ...paragraphs.map((paragraph) => `${paragraph}\n`),
-    ].join("\n");
-
-    const blob = new Blob([markdown], { type: "text/markdown" });
+    const md = [`# ${transcript.fileName}`, "", `> ${formatDate(transcript.createdAt)} | ${formatDuration(transcript.duration)} | ${transcript.language || "Unknown"}`, "", "---", "", ...paragraphs.map((p) => `${p}\n`)].join("\n");
+    const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${transcript.fileName.replace(/\.[^/.]+$/, "")}-transcript.md`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    toast.success("Downloaded as Markdown");
+    const a = document.createElement("a"); a.href = url;
+    a.download = `${transcript.fileName.replace(/\.[^/.]+$/, "")}.md`; a.click();
+    URL.revokeObjectURL(url); toast.success("Downloaded");
   };
 
-  const togglePlayback = async () => {
+  const togglePlay = async () => { if (!audioRef.current) return; audioRef.current.paused ? await audioRef.current.play() : audioRef.current.pause(); };
+  const toggleMute = () => { if (!audioRef.current) return; audioRef.current.muted = !audioRef.current.muted; setIsMuted(!isMuted); };
+  const cycleRate = useCallback(() => {
     if (!audioRef.current) return;
-    if (audioRef.current.paused) {
-      await audioRef.current.play();
-    } else {
-      audioRef.current.pause();
-    }
-  };
-
-  const jumpToSegment = async (segment: TranscriptSegment) => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = Math.max(0, segment.start);
-    setCurrentTime(segment.start);
-    await audioRef.current.play();
-  };
+    const rates = [1, 1.25, 1.5, 2, 0.75];
+    const next = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+    audioRef.current.playbackRate = next; setPlaybackRate(next);
+  }, [playbackRate]);
+  const seek = (s: number) => { if (!audioRef.current) return; audioRef.current.currentTime = Math.max(0, Math.min(audioRef.current.duration, audioRef.current.currentTime + s)); };
+  const jumpTo = async (seg: TranscriptSegment) => { if (!audioRef.current) return; audioRef.current.currentTime = seg.start; setCurrentTime(seg.start); await audioRef.current.play(); };
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => { if (!audioRef.current) return; const t = parseFloat(e.target.value); audioRef.current.currentTime = t; setCurrentTime(t); };
+  const pct = transcript.duration > 0 ? (currentTime / transcript.duration) * 100 : 0;
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-6">
-        <div className="flex min-w-0 items-start gap-4">
-          <button
-            onClick={onBack}
-            className="mt-1 rounded-full border border-white/10 bg-white/5 p-2.5 text-muted-foreground transition-colors hover:text-foreground"
-          >
+    <div className="space-y-6">
+      {/* Top bar */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <button onClick={onBack} className="mt-1 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-              Transcript view
-            </p>
-            <h1 className="mt-2 truncate font-heading text-4xl leading-none tracking-[-0.04em] sm:text-5xl">
+            <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
               {transcript.fileName.replace(/\.[^/.]+$/, "")}
             </h1>
-            <p className="mt-3 max-w-[38rem] text-sm leading-7 text-muted-foreground">
-              Read and scrub against the original audio from the same view.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Button
-            variant="secondary"
-            size="lg"
-            className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-foreground hover:bg-white/10"
-            onClick={copyText}
-          >
-            <Copy className="h-4 w-4" />
-            Copy
-          </Button>
-          <Button
-            variant="secondary"
-            size="lg"
-            className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-foreground hover:bg-white/10"
-            onClick={downloadText}
-          >
-            <Download className="h-4 w-4" />
-            TXT
-          </Button>
-          <Button
-            variant="secondary"
-            size="lg"
-            className="h-11 rounded-full border border-white/10 bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={downloadMarkdown}
-          >
-            <Share2 className="h-4 w-4" />
-            Markdown
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MetaBlock icon={<Clock className="h-4 w-4" />} label="Duration" value={formatDuration(transcript.duration)} />
-        <MetaBlock icon={<FileAudio className="h-4 w-4" />} label="File size" value={formatFileSize(transcript.fileSize)} />
-        <MetaBlock icon={<Globe className="h-4 w-4" />} label="Language" value={transcript.language || "Unknown"} />
-        <MetaBlock icon={<Calendar className="h-4 w-4" />} label="Created" value={formatDate(transcript.createdAt)} />
-        <MetaBlock icon={<Type className="h-4 w-4" />} label="Density" value={`${wordCount.toLocaleString()} words · ${readTime} min`} />
-      </div>
-
-      <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-              Audio sync
-            </p>
-            <p className="mt-2 text-sm leading-7 text-foreground/85">
-              Click any timed transcript block to jump to that exact moment.
-            </p>
-          </div>
-
-          {audioUrl ? (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="lg"
-                className="h-11 rounded-full border border-white/10 bg-white/5 px-4 text-foreground hover:bg-white/10"
-                onClick={() => void togglePlayback()}
-              >
-                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                {isPlaying ? "Pause" : "Play"}
-              </Button>
-              <span className="text-sm tabular-nums text-muted-foreground">
-                {formatDuration(currentTime)} / {formatDuration(transcript.duration)}
-              </span>
+            <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{formatDuration(transcript.duration)}</span>
+              <span className="inline-flex items-center gap-1"><FileAudio className="h-3 w-3" />{formatFileSize(transcript.fileSize)}</span>
+              {transcript.language && <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />{transcript.language}</span>}
+              <span>{formatDate(transcript.createdAt)}</span>
+              <span>{wordCount.toLocaleString()} words &middot; {readTime} min read</span>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Audio is available for transcripts created on this browser.
-            </p>
-          )}
+          </div>
         </div>
 
-        {audioUrl && (
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button onClick={copyText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Copy">
+            <Copy className="h-4 w-4" />
+          </button>
+          <button onClick={downloadText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Download TXT">
+            <Download className="h-4 w-4" />
+          </button>
+          <button onClick={downloadMarkdown} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Download Markdown">
+            <Share2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Audio player */}
+      {audioUrl && (
+        <div className="sticky top-14 z-20 -mx-5 border-y border-border/60 bg-background/90 px-5 backdrop-blur-xl">
           <audio
-            ref={audioRef}
-            src={audioUrl}
-            preload="metadata"
-            controls
-            className="mt-4 w-full"
+            ref={audioRef} src={audioUrl} preload="metadata"
             onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
+            onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)}
             onEnded={() => setIsPlaying(false)}
           />
+          {/* Progress line */}
+          <div className="relative h-1 -mx-5 px-5">
+            <div className="absolute inset-x-0 h-full bg-border/40" />
+            <div className="absolute inset-y-0 left-0 bg-primary transition-[width] duration-150" style={{ width: `${pct}%` }} />
+            <input type="range" min={0} max={transcript.duration || 0} step={0.1} value={currentTime}
+              onChange={handleScrub} className="scrubber absolute inset-0 z-10 w-full opacity-0 cursor-pointer" />
+          </div>
+          <div className="flex items-center gap-2 py-2.5">
+            <button onClick={() => seek(-10)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground"><SkipBack className="h-3.5 w-3.5" /></button>
+            <button onClick={() => void togglePlay()}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="ml-0.5 h-3.5 w-3.5" />}
+            </button>
+            <button onClick={() => seek(10)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground"><SkipForward className="h-3.5 w-3.5" /></button>
+            <span className="ml-1 font-mono text-[12px] tabular-nums text-muted-foreground">
+              {formatDuration(currentTime)} <span className="text-border">/</span> {formatDuration(transcript.duration)}
+            </span>
+            <div className="flex-1" />
+            <button onClick={cycleRate}
+              className="rounded-md border border-border bg-secondary px-2 py-1 font-mono text-[11px] font-medium text-muted-foreground hover:text-foreground">
+              {playbackRate}x
+            </button>
+            <button onClick={toggleMute} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground">
+              {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Transcript content */}
+      <div className="mx-auto max-w-3xl pb-12 pt-4">
+        {groupedSegments.length > 0 ? (
+          <div className="space-y-1">
+            {groupedSegments.map((group, i) => (
+              <motion.button
+                key={`g-${group.start}`}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.015, duration: 0.3 }}
+                onClick={() => audioUrl && void jumpTo(group.segments[0])}
+                disabled={!audioUrl}
+                className={`group w-full rounded-xl px-4 py-3 text-left transition-colors ${
+                  i === activeGroupIndex
+                    ? "bg-primary/[0.07]"
+                    : "hover:bg-secondary/50"
+                } ${!audioUrl ? "cursor-default" : "cursor-pointer"}`}
+              >
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {formatDuration(group.start)}
+                  </span>
+                  {audioUrl && (
+                    <span className="text-[11px] text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                      Jump
+                    </span>
+                  )}
+                </div>
+                <p className="font-reading text-[16px] leading-[1.8] text-foreground/85 sm:text-[17px]">
+                  {group.text}
+                </p>
+              </motion.button>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {paragraphs.map((p, i) => (
+              <motion.p
+                key={i}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.02, duration: 0.3 }}
+                className="font-reading text-[17px] leading-[1.85] text-foreground/85"
+              >
+                {p}
+              </motion.p>
+            ))}
+          </div>
         )}
       </div>
-
-      <div className="relative overflow-hidden rounded-[34px] border border-white/10 bg-[#070910] shadow-[0_30px_100px_rgba(0,0,0,0.45)]">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-
-        <div className="border-b border-white/10 px-6 py-5 sm:px-8">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            Reading room
-          </p>
-          <p className="mt-3 max-w-[38ch] font-heading text-3xl leading-none tracking-[-0.03em]">
-            Follow the text and jump back into the source recording.
-          </p>
-        </div>
-
-        <div className="px-6 py-8 sm:px-8 sm:py-10">
-          <div className="mb-6 font-heading text-7xl leading-none text-primary/14">
-            &ldquo;
-          </div>
-
-          {groupedSegments.length > 0 ? (
-            <div className="space-y-5">
-              {groupedSegments.map((group, index) => (
-                <motion.button
-                  key={`group-${group.start}-${group.end}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.025, duration: 0.35 }}
-                  onClick={() => void jumpToSegment(group.segments[0])}
-                  disabled={!audioUrl}
-                  className={`w-full rounded-[24px] border p-5 text-left transition-colors ${
-                    activeSegmentId && group.segments.some((segment) => segment.id === activeSegmentId)
-                      ? "border-primary/30 bg-primary/[0.08]"
-                      : "border-white/8 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]"
-                  } ${!audioUrl ? "cursor-default" : ""}`}
-                >
-                  <div className="mb-3 flex items-center justify-between gap-4">
-                    <span className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                      {formatDuration(group.start)} - {formatDuration(group.end)}
-                    </span>
-                    {audioUrl && (
-                      <span className="inline-flex items-center gap-1 text-xs text-primary">
-                        <SkipForward className="h-3.5 w-3.5" />
-                        Jump
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[15px] leading-8 text-foreground/84 sm:text-base sm:leading-9">
-                    {index === 0 ? (
-                      <>
-                        <span className="float-left mr-3 mt-1 font-heading text-6xl leading-[0.82] text-primary/60">
-                          {group.text.charAt(0)}
-                        </span>
-                        {group.text.slice(1)}
-                      </>
-                    ) : (
-                      group.text
-                    )}
-                  </p>
-                </motion.button>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-8">
-              {paragraphs.map((paragraph, index) => (
-                <motion.p
-                  key={`${paragraph.slice(0, 48)}-${paragraph.length}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.025, duration: 0.35 }}
-                  className="text-[15px] leading-8 text-foreground/84 sm:text-base sm:leading-9"
-                >
-                  {index === 0 ? (
-                    <>
-                      <span className="float-left mr-3 mt-1 font-heading text-6xl leading-[0.82] text-primary/60">
-                        {paragraph.charAt(0)}
-                      </span>
-                      {paragraph.slice(1)}
-                    </>
-                  ) : (
-                    paragraph
-                  )}
-                </motion.p>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-8 text-right font-heading text-7xl leading-none text-primary/14">
-            &rdquo;
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 px-6 py-4 text-[11px] uppercase tracking-[0.24em] text-muted-foreground sm:px-8">
-          <span>
-            {groupedSegments.length > 0 ? `${groupedSegments.length} timed blocks` : `${paragraphs.length} formatted paragraphs`}
-          </span>
-          <span>Rendered from Whisper output</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MetaBlock({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-        <span className="text-primary/80">{icon}</span>
-        {label}
-      </div>
-      <p className="mt-4 text-sm leading-6 text-foreground/85">{value}</p>
     </div>
   );
 }
