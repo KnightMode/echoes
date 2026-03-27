@@ -37,10 +37,13 @@ export function useTranscriptionQueue({ onComplete }: UseTranscriptionQueueOptio
   const processingRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── Process next job from queue ──
   const processJob = useCallback(async (job: QueuedJob) => {
     processingRef.current = true;
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     setActiveJob({ id: job.id, fileName: job.fileName, progress: 5, status: "Uploading file...", text: "" });
 
     try {
@@ -50,7 +53,11 @@ export function useTranscriptionQueue({ onComplete }: UseTranscriptionQueueOptio
 
       setActiveJob((prev) => prev ? { ...prev, progress: 10, status: "Uploading file..." } : prev);
 
-      const response = await fetch("/api/transcribe", { method: "POST", body: formData });
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+        signal: abortController.signal,
+      });
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Transcription failed");
@@ -94,10 +101,15 @@ export function useTranscriptionQueue({ onComplete }: UseTranscriptionQueueOptio
       onCompleteRef.current(resultData, job.file);
       toast.success(`Transcribed: ${job.fileName}`);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Something went wrong.";
-      setActiveJob((prev) => prev ? { ...prev, status: msg, progress: 0 } : prev);
-      toast.error(`Failed: ${job.fileName} — ${msg}`);
+      if (error instanceof Error && error.name === "AbortError") {
+        toast.warning("Transcription cancelled");
+      } else {
+        const msg = error instanceof Error ? error.message : "Something went wrong.";
+        setActiveJob((prev) => prev ? { ...prev, status: msg, progress: 0 } : prev);
+        toast.error(`Failed: ${job.fileName} — ${msg}`);
+      }
     } finally {
+      abortControllerRef.current = null;
       processingRef.current = false;
       setActiveJob(null);
     }
@@ -129,6 +141,12 @@ export function useTranscriptionQueue({ onComplete }: UseTranscriptionQueueOptio
     setQueue((prev) => prev.filter((j) => j.id !== id));
   }, []);
 
+  // ── Cancel active transcription and clear queue ──
+  const cancel = useCallback(() => {
+    setQueue([]);
+    abortControllerRef.current?.abort();
+  }, []);
+
   return {
     activeJob,
     queue,
@@ -136,5 +154,6 @@ export function useTranscriptionQueue({ onComplete }: UseTranscriptionQueueOptio
     busy: processingRef.current || activeJob !== null,
     enqueue,
     removeFromQueue,
+    cancel,
   };
 }

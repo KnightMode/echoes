@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { m } from "framer-motion";
 import {
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   Copy,
   Download,
   FileAudio,
+  Folder,
   Globe,
   Pause,
   Play,
@@ -16,8 +17,8 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { Transcript, TranscriptSegment } from "@/lib/types";
-import { formatDate, formatDuration, formatFileSize } from "@/lib/store";
+import { Folder as FolderType, Transcript, TranscriptSegment } from "@/lib/types";
+import { folderLabel, formatDate, formatDuration, formatFileSize } from "@/lib/store";
 import { toast } from "sonner";
 
 function splitIntoParagraphs(text: string): string[] {
@@ -88,11 +89,21 @@ const initialPlayerState: PlayerState = {
 interface TranscriptViewerProps {
   transcript: Transcript;
   audioUrl: string | null;
+  folders: FolderType[];
   onBack: () => void;
   stickyOffset?: boolean;
+  onMoveToFolder: (folderId: string | null) => void;
+  onCreateFolderAndMove: (name: string) => void;
 }
 
-export function TranscriptViewer({ transcript, audioUrl, onBack, stickyOffset }: TranscriptViewerProps) {
+export function TranscriptViewer({
+  transcript,
+  audioUrl,
+  folders,
+  onBack,
+  stickyOffset,
+  onMoveToFolder,
+}: TranscriptViewerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [player, dispatch] = useReducer(playerReducer, initialPlayerState);
   const wordCount = transcript.text.split(/\s+/).filter(Boolean).length;
@@ -173,18 +184,39 @@ export function TranscriptViewer({ transcript, audioUrl, onBack, stickyOffset }:
               <span className="inline-flex items-center gap-1"><FileAudio className="h-3 w-3" />{formatFileSize(transcript.fileSize)}</span>
               {transcript.language && <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />{transcript.language}</span>}
               <span>{formatDate(transcript.createdAt)}</span>
-              <span>{wordCount.toLocaleString()} words &middot; {readTime} min read</span>
+              <span>{wordCount.toLocaleString("en-US")} words &middot; {readTime} min read</span>
             </div>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button onClick={copyText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Copy">
-            <Copy className="h-4 w-4" />
-          </button>
-          <button onClick={downloadText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Download TXT">
-            <Download className="h-4 w-4" />
-          </button>
+        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-1.5">
+            <span className="hidden text-[11px] text-muted-foreground sm:inline">Folder</span>
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/50 px-2 py-1">
+              <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <select
+                aria-label="Move to folder"
+                value={transcript.folderId ?? ""}
+                onChange={(e) => onMoveToFolder(e.target.value === "" ? null : e.target.value)}
+                className="max-w-[10rem] cursor-pointer bg-transparent text-[12px] text-foreground outline-none"
+              >
+                <option value="">{folderLabel(null, folders)}</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={copyText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Copy">
+              <Copy className="h-4 w-4" />
+            </button>
+            <button onClick={downloadText} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground" title="Download TXT">
+              <Download className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 

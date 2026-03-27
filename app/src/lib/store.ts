@@ -1,38 +1,16 @@
 "use client";
 
-import { Transcript } from "./types";
+import { Folder } from "./types";
 
-const STORAGE_KEY = "echoes-transcripts";
-const LEGACY_KEY = "vox-transcripts";
+/** Fired after on-disk library data changes (same tab + other tabs via storage event for API key etc.). */
+export const ECHOES_STORAGE_EVENT = "echoes-storage";
 
-export function getTranscripts(): Transcript[] {
-  if (typeof window === "undefined") return [];
-  let raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    raw = localStorage.getItem(LEGACY_KEY);
-    if (raw) {
-      localStorage.setItem(STORAGE_KEY, raw);
-      localStorage.removeItem(LEGACY_KEY);
-    }
-  }
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-export function saveTranscript(transcript: Transcript): void {
-  const existing = getTranscripts();
-  existing.unshift(transcript);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
-}
-
-export function deleteTranscript(id: string): void {
-  const existing = getTranscripts();
-  const filtered = existing.filter((t) => t.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+export function folderLabel(
+  folderId: string | null | undefined,
+  folders: Folder[]
+): string {
+  if (folderId == null) return "Root";
+  return folders.find((f) => f.id === folderId)?.name ?? "Folder";
 }
 
 export function formatFileSize(bytes: number): string {

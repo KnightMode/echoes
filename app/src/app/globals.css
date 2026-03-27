@@ -138,3 +138,24 @@ input[type="range"].scrubber::-moz-range-thumb {
 }
 
 .text-balance { text-wrap: balance; }
+
+/* Sonner toast type colors */
+[data-sonner-toast] {
+  border-left: 3px solid hsl(228 12% 22%) !important;
+}
+[data-sonner-toast][data-type="success"] {
+  border-left-color: hsl(142 70% 45%) !important;
+  background: hsl(142 30% 8%) !important;
+}
+[data-sonner-toast][data-type="error"] {
+  border-left-color: hsl(0 65% 55%) !important;
+  background: hsl(0 30% 8%) !important;
+}
+[data-sonner-toast][data-type="warning"] {
+  border-left-color: hsl(38 90% 50%) !important;
+  background: hsl(38 30% 8%) !important;
+}
+[data-sonner-toast][data-type="info"] {
+  border-left-color: hsl(190 90% 50%) !important;
+  background: hsl(190 30% 8%) !important;
+}

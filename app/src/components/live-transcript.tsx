@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { m } from "framer-motion";
-import { CheckCircle2, FileAudio } from "lucide-react";
+import { CheckCircle2, FileAudio, StopCircle } from "lucide-react";
 import { Waveform } from "./waveform";
 
 function splitIntoParagraphs(text: string): string[] {
@@ -26,9 +26,10 @@ interface LiveTranscriptProps {
   fileName: string;
   active: boolean;
   queueCount?: number;
+  onCancel?: () => void;
 }
 
-export function LiveTranscript({ text, progress, status, fileName, active, queueCount = 0 }: LiveTranscriptProps) {
+export function LiveTranscript({ text, progress, status, fileName, active, queueCount = 0, onCancel }: LiveTranscriptProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const paragraphs = splitIntoParagraphs(text);
 
@@ -59,9 +60,21 @@ export function LiveTranscript({ text, progress, status, fileName, active, queue
             <p className="truncate text-sm font-medium">{fileName || "Audio file"}</p>
             <p className="mt-0.5 text-[13px] text-muted-foreground">{status || "Preparing..."}</p>
           </div>
-          <span className="shrink-0 font-mono text-xl font-bold tabular-nums text-primary">
-            {Math.round(progress)}%
-          </span>
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="font-mono text-xl font-bold tabular-nums text-primary">
+              {Math.round(progress)}%
+            </span>
+            {active && onCancel && (
+              <button
+                onClick={onCancel}
+                title="Stop transcription"
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              >
+                <StopCircle className="h-3.5 w-3.5" />
+                Stop
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Progress bar */}
