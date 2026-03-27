@@ -11,9 +11,67 @@ import type { TranscriptionSegment } from "openai/resources/audio/transcriptions
 
 const execFileAsync = promisify(execFile);
 const WHISPER_MAX_SIZE = 24 * 1024 * 1024;
+const MAX_UPLOAD_SIZE = 250 * 1024 * 1024;
 const CHUNK_DURATION_SECONDS = 600;
 
+// ── In-memory rate limiter (per IP, resets on deploy) ──
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX = 5; // max requests per window per IP
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  entry.count++;
+  return entry.count > RATE_LIMIT_MAX;
+}
+
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetAt) rateLimitMap.delete(ip);
+  }
+}, 300_000);
+
+const ALLOWED_EXTENSIONS = new Set(["mp3", "mp4", "wav", "webm", "ogg", "flac", "m4a", "wmv"]);
+const ALLOWED_MIME_PREFIXES = ["audio/", "video/"];
+
 export const maxDuration = 300;
+
+function sanitizeError(err: unknown): string {
+  if (err instanceof OpenAI.APIError) {
+    if (err.status === 401) return "Invalid API key. Please check your OpenAI API key.";
+    if (err.status === 429) return "Rate limit exceeded. Please wait and try again.";
+    if (err.status === 413) return "File too large for Whisper API.";
+    return "OpenAI API error. Please try again.";
+  }
+  if (err instanceof Error) {
+    if (err.message.includes("ENOENT") || err.message.includes("ffmpeg") || err.message.includes("ffprobe")) {
+      return "Audio processing failed. Ensure ffmpeg is installed.";
+    }
+  }
+  return "Transcription failed. Please try again.";
+}
+
+function isValidApiKey(key: string): boolean {
+  return /^sk-[a-zA-Z0-9_-]{20,}$/.test(key.trim());
+}
+
+function getExtension(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
+  return ALLOWED_EXTENSIONS.has(ext) ? ext : "mp3";
+}
+
+function isAllowedFile(file: File): boolean {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  if (ALLOWED_EXTENSIONS.has(ext)) return true;
+  return ALLOWED_MIME_PREFIXES.some((prefix) => file.type.startsWith(prefix));
+}
 
 function mapSegments(
   segments: Array<TranscriptionSegment> | undefined,
@@ -28,6 +86,17 @@ function mapSegments(
 }
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || request.headers.get("x-real-ip")
+    || "unknown";
+
+  if (isRateLimited(ip)) {
+    return Response.json(
+      { error: "Too many requests. Please wait a minute before trying again." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   const workDir = join(tmpdir(), `echoes-${randomUUID()}`);
 
   try {
@@ -35,12 +104,24 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File | null;
 
     if (!file) {
-      return Response.json({ error: "No file provided" }, { status: 400 });
+      return Response.json({ error: "No file provided." }, { status: 400 });
     }
 
-    const apiKey = formData.get("apiKey") as string | null;
+    if (file.size > MAX_UPLOAD_SIZE) {
+      return Response.json({ error: "File too large. Maximum size is 250MB." }, { status: 413 });
+    }
+
+    if (!isAllowedFile(file)) {
+      return Response.json({ error: "Unsupported file format." }, { status: 400 });
+    }
+
+    const apiKey = (formData.get("apiKey") as string | null)?.trim();
     if (!apiKey) {
-      return Response.json({ error: "No API key provided" }, { status: 400 });
+      return Response.json({ error: "No API key provided." }, { status: 400 });
+    }
+
+    if (!isValidApiKey(apiKey)) {
+      return Response.json({ error: "Invalid API key format. Keys start with sk- followed by at least 20 characters." }, { status: 400 });
     }
 
     const openai = new OpenAI({ apiKey });
@@ -64,7 +145,6 @@ export async function POST(request: NextRequest) {
             });
 
             send({ type: "status", message: "Processing complete", progress: 100 });
-            // Send partial_text same as result for small files
             send({ type: "partial_text", text: transcription.text, chunk: 0 });
             send({
               type: "result",
@@ -74,8 +154,7 @@ export async function POST(request: NextRequest) {
               segments: mapSegments(transcription.segments),
             });
           } catch (err) {
-            const message = err instanceof Error ? err.message : "Transcription failed";
-            send({ type: "error", error: message });
+            send({ type: "error", error: sanitizeError(err) });
           } finally {
             controller.close();
           }
@@ -83,13 +162,17 @@ export async function POST(request: NextRequest) {
       });
 
       return new Response(stream, {
-        headers: { "Content-Type": "application/x-ndjson" },
+        headers: {
+          "Content-Type": "application/x-ndjson",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store",
+        },
       });
     }
 
     // Large files: split with ffmpeg
     await mkdir(workDir, { recursive: true });
-    const ext = file.name.split(".").pop() || "mp3";
+    const ext = getExtension(file.name);
     const inputPath = join(workDir, `input.${ext}`);
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(inputPath, buffer);
@@ -112,6 +195,13 @@ export async function POST(request: NextRequest) {
             inputPath,
           ]);
           const totalDuration = parseFloat(probeOut.trim());
+
+          if (isNaN(totalDuration) || totalDuration <= 0) {
+            send({ type: "error", error: "Could not determine audio duration. The file may be corrupted." });
+            controller.close();
+            return;
+          }
+
           const numChunks = Math.ceil(totalDuration / CHUNK_DURATION_SECONDS);
 
           send({
@@ -178,7 +268,6 @@ export async function POST(request: NextRequest) {
               language = transcription.language;
             }
 
-            // Stream partial text as each chunk completes
             send({
               type: "partial_text",
               text: transcription.text,
@@ -201,8 +290,7 @@ export async function POST(request: NextRequest) {
             segments: fullSegments,
           });
         } catch (err) {
-          const message = err instanceof Error ? err.message : "Transcription failed";
-          send({ type: "error", error: message });
+          send({ type: "error", error: sanitizeError(err) });
         } finally {
           try {
             await rm(workDir, { recursive: true, force: true });
@@ -215,16 +303,18 @@ export async function POST(request: NextRequest) {
     });
 
     return new Response(stream, {
-      headers: { "Content-Type": "application/x-ndjson" },
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      },
     });
-  } catch (error: unknown) {
+  } catch {
     try {
       await rm(workDir, { recursive: true, force: true });
     } catch {
       // ignore
     }
-    const message =
-      error instanceof Error ? error.message : "Transcription failed";
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: "Transcription failed. Please try again." }, { status: 500 });
   }
 }

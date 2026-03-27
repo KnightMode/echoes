@@ -15,6 +15,7 @@ import { UploadZone } from "@/components/upload-zone";
 import { TranscriptViewer } from "@/components/transcript-viewer";
 import { HistorySidebar } from "@/components/history-sidebar";
 import { LiveTranscript } from "@/components/live-transcript";
+import { ApiKeyGuide } from "@/components/api-key-guide";
 import { Waveform } from "@/components/waveform";
 import { Transcript } from "@/lib/types";
 import { deleteAudioFile, getAudioFile, saveAudioFile } from "@/lib/audio-store";
@@ -345,6 +346,9 @@ export default function Home() {
                   onStartTranscription={handleStartTranscription}
                   busy={transcription.busy}
                 />
+                <div className="mt-4">
+                  <ApiKeyGuide />
+                </div>
               </m.div>
 
               {/* Recent transcripts */}
