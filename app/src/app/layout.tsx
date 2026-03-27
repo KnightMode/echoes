@@ -1,23 +1,29 @@
 import type { Metadata } from "next";
-import { DM_Serif_Display, Outfit } from "next/font/google";
+import { Manrope, Crimson_Pro, IBM_Plex_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { ScrollToTop } from "@/components/scroll-to-top";
 import "./globals.css";
 
-const outfit = Outfit({
+const manrope = Manrope({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
 });
 
-const dmSerif = DM_Serif_Display({
-  variable: "--font-heading",
+const crimsonPro = Crimson_Pro({
+  variable: "--font-reading",
   subsets: ["latin"],
-  weight: ["400"],
+  style: ["normal", "italic"],
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
-  title: "Vox — Audio Transcription",
-  description: "Transform audio into beautifully formatted transcripts with AI-powered precision.",
+  title: "Vox",
+  description: "Audio transcription, beautifully simple.",
 };
 
 export default function RootLayout({
@@ -28,17 +34,21 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${dmSerif.variable} h-full antialiased`}
+      className={`${manrope.variable} ${crimsonPro.variable} ${ibmPlexMono.variable} h-full`}
     >
-      <body className="grain min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col">
         {children}
+        <ScrollToTop />
         <Toaster
           theme="dark"
+          position="bottom-center"
           toastOptions={{
             style: {
-              background: "oklch(0.15 0.01 70)",
-              border: "1px solid oklch(0.25 0.02 70)",
-              color: "oklch(0.9 0.01 80)",
+              background: "hsl(230 15% 10%)",
+              border: "1px solid hsl(230 10% 18%)",
+              color: "hsl(40 10% 92%)",
+              borderRadius: "12px",
+              fontFamily: "var(--font-sans)",
             },
           }}
         />
